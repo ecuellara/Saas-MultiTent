@@ -1,0 +1,29 @@
+# Monorepo dental SaaS: backend (NestJS) + docs + CI.
+# El backend tiene su propio .gitignore; aquí van patrones de raíz.
+
+# Dependencias y build (cinturón y tirantes)
+**/node_modules/
+**/dist/
+**/build/
+**/*.tsbuildinfo
+
+# Entorno y secretos (nunca al repo)
+**/.env
+**/.env.*
+!**/.env.example
+
+# Tests / logs / backups locales
+**/coverage/
+*.log
+*.dump
+
+# Uploads y storage de desarrollo
+**/uploads/
+**/storage/
+
+# IDE / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp

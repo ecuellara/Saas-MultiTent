@@ -1,0 +1,32 @@
+# Dependencias
+node_modules/
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+tsconfig.build.tsbuildinfo
+
+# Entorno (secretos: nunca al repo, doc §8)
+.env
+.env.*
+!.env.example
+
+# Tests / cobertura
+coverage/
+*.log
+
+# Prisma
+prisma/migrations/**/migration.sql.lock
+
+# Subidas locales y storage de desarrollo
+uploads/
+storage/
+*.dump
+
+# IDE / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
