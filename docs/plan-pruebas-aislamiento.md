@@ -129,20 +129,34 @@ Ante un recurso de otro tenant, la API responde **404 Not Found**, no 403:
 
 ---
 
-## 6. Límite conocido de ADR-002 (importante)
+## 6. Modelo de enforcement real (y sus dos límites)
 
-La estrategia de identificadores de ADR-002 usa **id global único** (UUID) + `tenantId` como columna. Consecuencia directa:
+La estrategia de identificadores de ADR-002 usa **id global único** (UUID) + `tenantId` como columna. El aislamiento se apoya en la extensión Prisma, pero **solo funciona si se cumplen tres condiciones**, todas verificadas en ejecución con sondas instrumentadas:
+
+### 6.1 El contexto debe estar `validado`
+
+El middleware crea el scope `AsyncLocalStorage` **sin leer la cabecera**; solo `TenantGuard`, tras validar tenant + membresía, pone `validado: true`. La extensión comprueba ese flag antes de filtrar.
+
+Sin él, en las rutas `@Public()`/`@Platform()` (donde ningún guard sustituye la cabecera) bastaba enviar `X-Tenant-Id: <otro tenant>` para que la extensión filtrara —y **sobrescribiera** el filtro explícito del servicio— con un valor del cliente: `GET /api/platform/tenants/A/export` con `X-Tenant-Id: B` devolvía el dataset de B etiquetado como A.
+
+### 6.2 `$transaction` debe venir del cliente extendido
+
+`PrismaService` copia los delegados extendidos, pero si `this.$transaction` es el del cliente base, el `tx` que recibe el callback **no lleva la extensión**: toda consulta dentro de una transacción queda sin filtro de tenant. El constructor hace `this.$transaction = extended.$transaction.bind(extended)`.
+
+### 6.3 Límite de propagación de `AsyncLocalStorage`
+
+Comprobado con una sonda: el hook de la extensión **sí** ve el store cuando el `run()` envuelve la **petición completa** (el caso real de la API, que es lo que ejercitan las secciones 2 y 3 de este plan), pero **no** cuando envuelve una llamada suelta a Prisma:
 
 ```typescript
-// Dentro del contexto del tenant A:
-await prisma.paciente.findUnique({ where: { id: pacienteDeB } });
-// -> DEVUELVE la fila de B. La extensión NO puede inyectar tenantId aquí,
-//    porque Prisma exige que el where de findUnique contenga solo campos únicos.
+// Envuelto por el middleware (petición HTTP)  -> el hook VE el contexto  -> filtra
+// tenantContext.run(store, () => prisma.paciente.findMany())  -> el hook NO ve el contexto
 ```
 
-> **El `await` va DENTRO del `run`.** Las queries Prisma son lazy y se ejecutan al esperarlas: `tenantContext.run(store, async () => await prisma.paciente.findMany())`. Esperar fuera del `run` ejecuta la query sin contexto (ese patrón pasaba antes solo por stores filtrados de peticiones previas).
+**Consecuencia práctica:** el aislamiento **no debe depender de la extensión**. En scripts, seeds, migraciones y cron —que corren fuera de una petición HTTP— hay que pasar `tenantId` explícito y verificar pertenencia. El spec §7 documenta este límite como aserción.
 
-Esto **no es un fallo**: es la razón por la que ADR-002 establece como obligación que **toda mutación por id verifique la pertenencia** antes de operar:
+### 6.4 Obligación derivada: mutaciones por id
+
+`findUnique`/`update`/`delete` por `id` **no** se filtran (Prisma no admite `tenantId` en el `where` de `findUnique`), así que toda mutación por id verifica la pertenencia antes de operar:
 
 ```typescript
 async function obtenerPacienteDelTenant(id: string) {
@@ -155,9 +169,9 @@ async function obtenerPacienteDelTenant(id: string) {
 }
 ```
 
-**Las secciones 2 y 3 del spec son precisamente la prueba de que esa verificación existe** en cada módulo. Por eso el spec §7 documenta el comportamiento crudo: si alguien olvida la verificación en un servicio nuevo, el test de lectura cruzada de ese módulo lo detecta.
+**Las secciones 2 y 3 del spec son la prueba de que esa verificación existe** en cada módulo: si alguien la olvida en un servicio nuevo, el test de lectura cruzada de ese módulo lo detecta.
 
-> Si en el futuro se migra a claves compuestas `@@id([tenantId, id])` (alternativa A de ADR-002), la aserción de §7 debe cambiar a `null` y las verificaciones manuales podrían retirarse.
+> Si en el futuro se migra a claves compuestas `@@id([tenantId, id])` (alternativa A de ADR-002), las aserciones de §7 cambian y las verificaciones manuales podrían retirarse.
 
 ---
 

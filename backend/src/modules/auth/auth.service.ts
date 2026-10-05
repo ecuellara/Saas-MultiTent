@@ -3,6 +3,11 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { hashPassword, validarPassword, verificarPassword } from '../../core/auth/passwords.js';
 import {
+  LimitadorIntentos,
+  VENTANA_INTENTOS_MS,
+  reglasLogin,
+} from '../../core/auth/rate-limit.js';
+import {
   REFRESH_COOKIE,
   TokenPair,
   crearRefreshToken,
@@ -10,9 +15,6 @@ import {
   revocarRefresh,
   rotarRefresh,
 } from './refresh.service.js';
-
-const VENTANA_MS = 60_000;
-const MAX_INTENTOS = 10;
 
 type UserRow = {
   id: string;
@@ -24,8 +26,11 @@ type UserRow = {
 
 @Injectable()
 export class AuthService {
-  /** Rate limit en memoria (etapa 1; Redis en etapa 2). Clave: ip + email. */
-  private intentos = new Map<string, number[]>();
+  /**
+   * Rate limit de login en memoria (etapa 1; Redis en etapa 2, doc §8.2).
+   * Contadores independientes por IP y por email.
+   */
+  private readonly limite = new LimitadorIntentos(VENTANA_INTENTOS_MS);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -42,7 +47,7 @@ export class AuthService {
   }
 
   async login(email: string, password: string, ip?: string): Promise<TokenPair> {
-    this.verificarLimite(`${ip ?? 'sin-ip'}|${email.toLowerCase()}`);
+    this.limite.consumir(reglasLogin(ip, email));
     const user = await this.db.user.findUnique({ where: { email } });
     if (!user || user.estado !== 'ACTIVE') {
       throw new UnauthorizedException('Credenciales inválidas');
@@ -98,19 +103,6 @@ export class AuthService {
 
   async hashPassword(plain: string): Promise<string> {
     return hashPassword(plain);
-  }
-
-  private verificarLimite(clave: string): void {
-    const ahora = Date.now();
-    const lista = (this.intentos.get(clave) ?? []).filter((t) => ahora - t < VENTANA_MS);
-    if (lista.length >= MAX_INTENTOS) {
-      throw new HttpException(
-        'Demasiados intentos, intente en un minuto',
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-    lista.push(ahora);
-    this.intentos.set(clave, lista);
   }
 }
 

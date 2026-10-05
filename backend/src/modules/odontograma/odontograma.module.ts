@@ -230,6 +230,7 @@ export class OdontogramaController {
   }
 
   @Get(':id')
+  @RequirePermission('patients.read')
   obtener(@Param('id') id: string): Promise<unknown> {
     return this.service.obtener(id);
   }

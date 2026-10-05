@@ -31,3 +31,6 @@ prisma/migrations/**/migration.sql.lock
 .DS_Store
 Thumbs.db
 *.swp
+
+# Base de datos embebida de las pruebas e2e (artefacto local, nunca al repo)
+.pglite-data/

@@ -11,5 +11,15 @@ export default defineConfig({
     fileParallelism: false,
     testTimeout: 60_000,
     hookTimeout: 120_000,
+    // Los specs hacen muchos logins desde la misma IP (y con el mismo email)
+    // para ejercitar la autenticación, así que se relaja el límite de intentos
+    // SOLO en el entorno de pruebas. Los valores por defecto de producción
+    // (8/min por IP, 5/min por email) siguen intactos en el código.
+    env: {
+      RATE_LIMIT_LOGIN_IP: '10000',
+      RATE_LIMIT_LOGIN_EMAIL: '10000',
+      RATE_LIMIT_MFA_IP: '10000',
+      RATE_LIMIT_MFA_ID: '10000',
+    },
   },
 });

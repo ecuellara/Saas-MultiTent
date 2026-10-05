@@ -7,10 +7,14 @@ import { GlobalExceptionFilter } from './core/filters/global-exception.filter.js
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
-  // `trust proxy` para que el rate-limit por IP funcione detrás de Nginx/Traefik.
+  // `trust proxy` = 2 saltos: Cloudflare → Nginx → API (doc §5 y §8.2). Con 1,
+  // `req.ip` sería la IP del edge de Cloudflare (que ya reenvía a Nginx) y el
+  // rate limit por IP se degradaría a un cubo compartido por todos los
+  // clientes. Si se despliega SIN Cloudflare (solo Nginx delante) debe ser 1;
+  // si la API queda expuesta directamente, 0.
   (app.getHttpAdapter().getInstance() as { set?: (k: string, v: unknown) => void }).set?.(
     'trust proxy',
-    1,
+    2,
   );
   app.setGlobalPrefix('api');
   // CORS (doc §8.7): orígenes explícitos con trim; credentials SÍ porque el

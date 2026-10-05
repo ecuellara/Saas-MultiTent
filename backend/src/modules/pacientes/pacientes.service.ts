@@ -24,7 +24,6 @@ export interface CreateDocumentoDto {
   tipo: string;
   mimeType: string;
   tamanioKb?: number;
-  storageKey?: string;
 }
 
 @Injectable()
@@ -82,7 +81,7 @@ export class PacientesService {
 
   async documentos(id: string): Promise<unknown> {
     await this.obtener(id);
-    return this.db.documentoPaciente.findMany({ where: { pacienteId: id } });
+    return this.db.documentoPaciente.findMany({ where: { pacienteId: id, deletedAt: null } });
   }
 
   async registrarDocumento(id: string, dto: CreateDocumentoDto): Promise<Record<string, unknown>> {
@@ -93,15 +92,16 @@ export class PacientesService {
     } catch {
       throw new BadRequestException('Archivo no permitido');
     }
-    const storageKey = dto.storageKey
-      ? this.assertClave(dto.storageKey, ctx.tenantId)
-      : this.storage.construirClave(
-          ctx.tenantId,
-          'patients',
-          paciente.id as string,
-          'documents',
-          dto.nombreArchivo,
-        );
+    // La clave se construye SIEMPRE en el servidor (doc §9). Aceptarla del
+    // cliente permitía registrar el documento del paciente X apuntando al
+    // archivo del paciente Y dentro del mismo tenant, y descargarlo después.
+    const storageKey = this.storage.construirClave(
+      ctx.tenantId,
+      'patients',
+      paciente.id as string,
+      'documents',
+      dto.nombreArchivo,
+    );
     return this.db.documentoPaciente.create({
       data: {
         tenantId: ctx.tenantId,
@@ -115,14 +115,6 @@ export class PacientesService {
     });
   }
 
-  private assertClave(storageKey: string, tenantId: string): string {
-    try {
-      return this.storage.assertClaveTenant(tenantId, storageKey);
-    } catch {
-      throw new BadRequestException('storageKey fuera del tenant');
-    }
-  }
-
   async descarga(id: string, docId: string): Promise<Record<string, unknown>> {
     const ctx = requireTenant();
     const paciente = await this.obtener(id);
@@ -130,10 +122,13 @@ export class PacientesService {
     if (
       !doc ||
       doc.tenantId !== ctx.tenantId ||
-      (doc.pacienteId as string) !== (paciente.id as string)
+      (doc.pacienteId as string) !== (paciente.id as string) ||
+      ((doc as { deletedAt?: Date | null }).deletedAt ?? null) !== null
     ) {
       throw new NotFoundException('Documento no encontrado');
     }
+    // Defensa en profundidad: revalida la clave almacenada antes de entregarla.
+    this.storage.assertClaveTenant(ctx.tenantId, doc.storageKey as string);
     return doc;
   }
 

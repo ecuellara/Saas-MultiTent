@@ -7,6 +7,15 @@ import { RequirePermission } from '../../core/guards/require-permission.decorato
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 
+/**
+ * DTO del body de `PATCH /consentimientos/:id/estado` como CLASE normal, nunca
+ * una intersección (`EstadoConsentimientoDto & { revocadoPor?: string }`).
+ * Un tipo intersección hace que `emitDecoratorMetadata` emita `Object` como
+ * metatipo y `ValidationPipe.toValidate()` devuelva false: se saltarían
+ * `whitelist` y `forbidNonWhitelisted`, y el cliente podría inyectar
+ * `revocadoPor` para atribuirse (o atribuir a otro) la revocación de un
+ * consentimiento informado. La autoría sale SIEMPRE de `ctx.userId`.
+ */
 export class EstadoConsentimientoDto {
   @ApiProperty({ enum: ['borrador', 'firmado', 'revocado', 'anulado'] })
   @IsString()
@@ -58,6 +67,13 @@ type FirmadoRow = Record<string, unknown> & {
   estado: string;
 };
 
+type PacienteRow = {
+  tenantId: string;
+  fechaNac: Date | string | null;
+  representanteNombre: string | null;
+  representanteDni: string | null;
+};
+
 type Db = {
   consentimientoFirmado: {
     findUnique: (a: unknown) => Promise<FirmadoRow | null>;
@@ -70,8 +86,31 @@ type Db = {
     findUnique: (a: unknown) => Promise<Record<string, unknown> | null>;
     create: (a: unknown) => Promise<unknown>;
   };
-  paciente: { findUnique: (a: unknown) => Promise<{ tenantId: string } | null> };
+  paciente: { findUnique: (a: unknown) => Promise<PacienteRow | null> };
 };
+
+/** Mayoría de edad legal (Perú): 18 años cumplidos. */
+const MAYORIA_DE_EDAD = 18;
+
+/**
+ * Edad en años cumplidos a la fecha de referencia. Se calcula con
+ * componentes de fecha **locales** (misma convención que el resto del
+ * backend, que usa `new Date(...)` local para columnas `@db.Date`), así que un
+ * `fechaNac` con hora no desplaza el resultado por zona horaria.
+ * Devuelve `null` si no hay fecha de nacimiento (dato desconocido).
+ */
+export function calcularEdad(
+  fechaNac: Date | string | null | undefined,
+  hoy = new Date(),
+): number | null {
+  if (!fechaNac) return null;
+  const n = new Date(fechaNac);
+  if (Number.isNaN(n.getTime())) return null;
+  let edad = hoy.getFullYear() - n.getFullYear();
+  const mes = hoy.getMonth() - n.getMonth();
+  if (mes < 0 || (mes === 0 && hoy.getDate() < n.getDate())) edad -= 1;
+  return edad;
+}
 
 /**
  * Consentimientos (doc §6): `cuerpoSnapshot` congela el texto al firmar;
@@ -110,6 +149,18 @@ export class ConsentimientosService {
     const ctx = requireTenant();
     const p = await this.db.paciente.findUnique({ where: { id: dto.pacienteId } });
     if (!p || p.tenantId !== ctx.tenantId) throw new NotFoundException('Paciente no encontrado');
+    // Consentimiento informado de un MENOR: exige representante legal (doc §6).
+    // Si no hay `fechaNac` la edad es desconocida y no se bloquea.
+    const edad = calcularEdad(p.fechaNac);
+    if (edad !== null && edad < MAYORIA_DE_EDAD) {
+      const nombre = (p.representanteNombre ?? '').trim();
+      const dni = (p.representanteDni ?? '').trim();
+      if (!nombre || !dni) {
+        throw new BadRequestException(
+          'El paciente es menor de edad: se requiere representanteNombre y representanteDni',
+        );
+      }
+    }
     const plantilla = await this.db.consentimientoPlantilla.findUnique({
       where: { id: dto.plantillaId },
     });
@@ -131,7 +182,11 @@ export class ConsentimientosService {
     });
   }
 
-  async cambiarEstado(id: string, estado: string, revocadoPor?: string): Promise<FirmadoRow> {
+  /**
+   * Transición de estado. La autoría de la revocación sale SIEMPRE de
+   * `ctx.userId` (nunca del body) y la fecha del reloj del servidor.
+   */
+  async cambiarEstado(id: string, estado: string): Promise<FirmadoRow> {
     const actual = await this.obtener(id);
     const desde = actual.estado;
     const permitidas: Record<string, string[]> = {
@@ -149,9 +204,7 @@ export class ConsentimientosService {
       data: {
         estado,
         ...(estado === 'firmado' ? { firmadoEn: new Date() } : {}),
-        ...(estado === 'revocado'
-          ? { revocadoEn: new Date(), revocadoPor: revocadoPor ?? ctx.userId }
-          : {}),
+        ...(estado === 'revocado' ? { revocadoEn: new Date(), revocadoPor: ctx.userId } : {}),
       },
     });
   }
@@ -163,6 +216,7 @@ export class ConsentimientosController {
   constructor(private readonly service: ConsentimientosService) {}
 
   @Get('plantillas')
+  @RequirePermission('consents.read')
   plantillas(): Promise<unknown> {
     return this.service.plantillas();
   }
@@ -180,6 +234,7 @@ export class ConsentimientosController {
   }
 
   @Get(':id')
+  @RequirePermission('consents.read')
   obtener(@Param('id') id: string): Promise<unknown> {
     return this.service.obtener(id);
   }
@@ -188,9 +243,9 @@ export class ConsentimientosController {
   @RequirePermission('consents.write')
   cambiarEstado(
     @Param('id') id: string,
-    @Body() dto: EstadoConsentimientoDto & { revocadoPor?: string },
+    @Body() dto: EstadoConsentimientoDto,
   ): Promise<unknown> {
-    return this.service.cambiarEstado(id, dto.estado, dto.revocadoPor);
+    return this.service.cambiarEstado(id, dto.estado);
   }
 }
 

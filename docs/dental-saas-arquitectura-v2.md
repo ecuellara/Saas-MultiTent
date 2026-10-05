@@ -1157,7 +1157,7 @@ JwtAuthGuard → TenantGuard → MembershipGuard → PermissionsGuard → Featur
 ### 7.3 Extensión Prisma
 
 ```typescript
-// core/prisma/prisma.service.ts
+// core/prisma/tenant-extension.ts
 const TENANT_MODELS = new Set([
   'Sede', 'Membership', 'Role', 'Paciente', 'DocumentoPaciente',
   'Especialidad', 'Tratamiento', 'Cita', 'HistorialClinico',
@@ -1174,17 +1174,30 @@ export const tenantExtension = Prisma.defineExtension({
     $allModels: {
       async $allOperations({ model, operation, args, query }) {
         const ctx = tenantContext.getStore();
-        if (!ctx?.tenantId || !TENANT_MODELS.has(model)) {
+        // Solo con contexto VALIDADO por TenantGuard (ver 7.1). El middleware
+        // siembra el store sin validar porque en rutas @Public/@Platform ningún
+        // guard lo sustituye: filtrar con ese valor sería confiar en el cliente.
+        if (!ctx?.validado || !ctx.tenantId || !TENANT_MODELS.has(model)) {
           return query(args);
         }
-        if (['findMany', 'findFirst', 'count', 'aggregate', 'groupBy'].includes(operation)) {
-          args.where = { ...(args as any).where, tenantId: ctx.tenantId };
+        const a = args as Record<string, unknown>;
+        // Nunca SOBRESCRIBIR en silencio un `tenantId` explícito distinto.
+        const declarado = (a.where as Record<string, unknown> | undefined)?.tenantId;
+        if (declarado !== undefined && declarado !== ctx.tenantId) {
+          throw new ForbiddenException('tenantId declarado distinto del de la sesión');
         }
-        if (['updateMany', 'deleteMany'].includes(operation)) {
-          args.where = { ...(args as any).where, tenantId: ctx.tenantId };
+        if (['findMany', 'findFirst', 'count', 'aggregate', 'groupBy',
+             'updateMany', 'deleteMany'].includes(operation)) {
+          a.where = { ...(a.where as object | undefined), tenantId: ctx.tenantId };
         }
         if (operation === 'create') {
-          args.data = { ...(args as any).data, tenantId: ctx.tenantId };
+          a.data = { ...(a.data as object | undefined), tenantId: ctx.tenantId };
+        }
+        if (operation === 'createMany') {
+          const data = a.data as Record<string, unknown> | Array<Record<string, unknown>>;
+          a.data = Array.isArray(data)
+            ? data.map((d) => ({ ...d, tenantId: ctx.tenantId }))
+            : { ...data, tenantId: ctx.tenantId };
         }
         return query(args);
       },
@@ -1192,6 +1205,14 @@ export const tenantExtension = Prisma.defineExtension({
   },
 });
 ```
+
+**Tres reglas que hacen que esto funcione de verdad** (todas verificadas en ejecución):
+
+1. **El contexto debe estar `validado`.** El middleware crea el scope con `run()` pero **sin leer la cabecera**; solo `TenantGuard`, tras validar tenant + membresía, pone `validado: true`. Sin este flag, basta enviar `X-Tenant-Id: <otro tenant>` en una ruta `@Platform()` (export, métricas, checkout) para que la extensión filtrara —y sobrescribiera el filtro explícito del servicio— con un valor del cliente.
+
+2. **`$transaction` debe tomarse del cliente EXTENDIDO.** `PrismaService` copia los delegados extendidos, pero si `this.$transaction` sigue siendo el del cliente base, el `tx` que recibe el callback **no lleva la extensión** y toda consulta dentro de una transacción queda sin filtro. Por eso el constructor hace `this.$transaction = extended.$transaction.bind(extended)`.
+
+3. **Hay un límite de propagación de `AsyncLocalStorage`** (verificado con una sonda): el hook **sí** ve el store cuando el `run()` envuelve la petición completa (el caso real de la API), pero **no** cuando envuelve una llamada suelta a Prisma. Consecuencia: **el aislamiento no debe depender de la extensión**; en scripts, seeds, migraciones y cron —que corren fuera de una petición HTTP— hay que pasar `tenantId` explícito y verificar pertenencia.
 
 **Regla complementaria (mutaciones por id):** `findUnique`/`update`/`delete` por `id` no se tocan en la extensión (Prisma no admite `tenantId` en `findUnique`). En su lugar, el servicio lee el registro y **verifica `registro.tenantId === ctx.tenantId`** antes de mutar, lanzando `NotFoundException` si no coincide. Esto es un chequeo explícito en ~una docena de servicios, no en 90 archivos.
 

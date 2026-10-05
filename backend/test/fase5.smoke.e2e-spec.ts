@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { PASSWORD_PLAIN, limpiarDosTenants, seedDosTenants, type DosTenants } from './helpers/tenants-fixture.js';
+import { loginPlataformaConMfa } from './helpers/platform-login.js';
 
 type Db = {
   permission: { findMany: (a: unknown) => Promise<Array<{ codigo: string }>> };
@@ -40,6 +41,8 @@ describe('Smoke Fase 5/6', () => {
   let db: Db;
   let datos: DosTenants;
   let adminH: Record<string, string>;
+  /** Secret TOTP del owner, para reutilizar la MFA ya enrolada entre tests. */
+  let ownerSecret = '';
 
   beforeAll(async () => {
     const modulo = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -119,10 +122,11 @@ describe('Smoke Fase 5/6', () => {
     await db.platformUser.create({
       data: { email: 'owner@test.pe', passwordHash: hash, nombre: 'Owner', rol: 'owner' },
     });
-    const plogin = await request(srv).post('/api/platform/auth/login')
-      .send({ email: 'owner@test.pe', password: 'Owner-Segura-2026!' })
-      .expect(200);
-    const PH = { Authorization: `Bearer ${plogin.body.access_token}` };
+    // La MFA de plataforma es obligatoria y falla en cerrado (ADR-004): el
+    // helper enrola el TOTP con el temp_token y devuelve un access token.
+    const sesion = await loginPlataformaConMfa(srv, 'owner@test.pe', 'Owner-Segura-2026!');
+    ownerSecret = sesion.secret;
+    const PH = { Authorization: `Bearer ${sesion.access}` };
     await request(srv).put('/api/platform/subscriptions').set(PH).send({
       tenantId: datos.a.tenantId, planCodigo: 'consultorio',
     }).expect(200);
@@ -143,10 +147,13 @@ describe('Smoke Fase 5/6', () => {
 
   it('Plataforma: suspender bloquea al tenant; reactivar lo restaura', async () => {
     const srv = app.getHttpServer();
-    const plogin = await request(srv).post('/api/platform/auth/login')
-      .send({ email: 'owner@test.pe', password: 'Owner-Segura-2026!' })
-      .expect(200);
-    const PH = { Authorization: `Bearer ${plogin.body.access_token}` };
+    const { access } = await loginPlataformaConMfa(
+      srv,
+      'owner@test.pe',
+      'Owner-Segura-2026!',
+      ownerSecret,
+    );
+    const PH = { Authorization: `Bearer ${access}` };
     await request(srv).patch(`/api/platform/tenants/${datos.a.tenantId}`).set(PH).send({ estado: 'SUSPENDED' }).expect(200);
     await request(srv).get(`/api/pacientes/${datos.a.pacienteId}`).set(adminH).expect(403);
     await request(srv).patch(`/api/platform/tenants/${datos.a.tenantId}`).set(PH).send({ estado: 'ACTIVE' }).expect(200);
@@ -155,10 +162,13 @@ describe('Smoke Fase 5/6', () => {
 
   it('Plataforma: export por tenant sin secretos', async () => {
     const srv = app.getHttpServer();
-    const plogin = await request(srv).post('/api/platform/auth/login')
-      .send({ email: 'owner@test.pe', password: 'Owner-Segura-2026!' })
-      .expect(200);
-    const PH = { Authorization: `Bearer ${plogin.body.access_token}` };
+    const { access } = await loginPlataformaConMfa(
+      srv,
+      'owner@test.pe',
+      'Owner-Segura-2026!',
+      ownerSecret,
+    );
+    const PH = { Authorization: `Bearer ${access}` };
     const r = await request(srv).get(`/api/platform/tenants/${datos.a.tenantId}/export`).set(PH).expect(200);
     expect(r.body.tenantId).toBe(datos.a.tenantId);
     const tablas = r.body.tablas as Record<string, unknown[]>;

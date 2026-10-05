@@ -24,10 +24,7 @@ export class CreateDocumentoDto {
   @Max(20 * 1024)
   tamanioKb?: number;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  storageKey?: string;
+  // `storageKey` NO se acepta del cliente: la construye el servidor (doc §9).
 }
 
 @ApiTags('pacientes')
@@ -35,7 +32,11 @@ export class CreateDocumentoDto {
 export class PacientesController {
   constructor(private readonly service: PacientesService) {}
 
+  // Toda lectura clínica exige `patients.read`: antes ningún GET lo pedía, de
+  // modo que un rol acotado (p. ej. recepción sin acceso a historia clínica)
+  // podía leer expedientes completos con solo estar autenticado.
   @Get()
+  @RequirePermission('patients.read')
   listar(@Query('limit') limit?: string): Promise<unknown> {
     const n = limit !== undefined ? Number.parseInt(limit, 10) : 100;
     return this.service.listar(Number.isNaN(n) ? 100 : n);
@@ -48,6 +49,7 @@ export class PacientesController {
   }
 
   @Get(':id')
+  @RequirePermission('patients.read')
   obtener(@Param('id') id: string): Promise<unknown> {
     return this.service.obtener(id);
   }
@@ -65,11 +67,13 @@ export class PacientesController {
   }
 
   @Get(':id/historiales')
+  @RequirePermission('patients.read')
   historiales(@Param('id') id: string): Promise<unknown> {
     return this.service.historiales(id);
   }
 
   @Get(':id/documentos')
+  @RequirePermission('patients.read')
   documentos(@Param('id') id: string): Promise<unknown> {
     return this.service.documentos(id);
   }
@@ -84,11 +88,13 @@ export class PacientesController {
   }
 
   @Get(':id/documentos/:docId/descarga')
+  @RequirePermission('patients.read')
   descarga(@Param('id') id: string, @Param('docId') docId: string): Promise<unknown> {
     return this.service.descarga(id, docId);
   }
 
   @Get(':id/odontogramas')
+  @RequirePermission('patients.read')
   odontogramas(@Param('id') id: string): Promise<unknown> {
     return this.service.odontogramas(id);
   }

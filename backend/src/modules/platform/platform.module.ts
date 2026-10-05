@@ -8,7 +8,13 @@ import { generarCodigoTotp, generarSecretoTotp, urlOtpauth, verificarTotp } from
 import { Platform } from '../../core/auth/platform.decorator.js';
 import { Public } from '../../core/auth/public.decorator.js';
 import { hashPassword, validarPassword, verificarPassword } from '../../core/auth/passwords.js';
-import { PlatformGuard } from '../../core/guards/platform.guard.js';
+import {
+  LimitadorIntentos,
+  VENTANA_INTENTOS_MS,
+  reglasLogin,
+  reglasMfa,
+} from '../../core/auth/rate-limit.js';
+import { PermitirAltaMfa, PlatformGuard, PlatformRoles } from '../../core/guards/platform.guard.js';
 import { EntitlementsService } from '../../core/entitlements/entitlements.service.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { LoginDto } from '../auth/login.dto.js';
@@ -16,6 +22,7 @@ import {
   CookieSpec,
   TokenPair,
   crearRefreshToken,
+  emitirTemporalAltaMfa,
   emitirTemporalMfa,
   leerRefreshCookie,
   revocarRefresh,
@@ -59,8 +66,22 @@ export class UpdateTenantDto {
   nombre?: string;
 }
 
+/** Resultado del login de plataforma: sesión plena, alta de MFA o MFA pendiente. */
+export type ResultadoLoginPlataforma =
+  | { access_token: string; refreshCookie: CookieSpec }
+  | { mfa_required: true; temp_token: string }
+  | { mfa_required: true; mfa_setup_required: true; temp_token: string };
+
 @Injectable()
 export class PlatformService {
+  /**
+   * Rate limit en memoria (etapa 1; Redis en etapa 2, doc §8.2): contadores
+   * independientes por IP y por identificador. Cubre el login de plataforma y
+   * el paso MFA (6 dígitos → fuerza bruta viable dentro de los 5 min del
+   * temp_token si no se limita).
+   */
+  private readonly limite = new LimitadorIntentos(VENTANA_INTENTOS_MS);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -71,10 +92,8 @@ export class PlatformService {
     return this.prisma as unknown as PlatformService['db'];
   }
 
-  async login(
-    dto: LoginDto,
-    ip?: string,
-  ): Promise<{ access_token: string; refreshCookie?: CookieSpec } | { mfa_required: true; temp_token: string }> {
+  async login(dto: LoginDto, ip?: string): Promise<ResultadoLoginPlataforma> {
+    this.limite.consumir(reglasLogin(ip, dto.email));
     const u = (await this.db.platformUser.findUnique({ where: { email: dto.email } })) as unknown as {
       id: string;
       email: string;
@@ -97,19 +116,32 @@ export class PlatformService {
       const temp_token = await emitirTemporalMfa(this.jwt, { sub: u.id, platform: true, rol: u.rol });
       return { mfa_required: true as const, temp_token };
     }
-    const access_token = await this.jwt.signAsync({ sub: u.id, platform: true, rol: u.rol, mfa: 'ok' });
-    const refreshCookie = await crearRefreshToken(this.prisma, 'platform', u.id, ip);
-    return { access_token, refreshCookie };
+    // Fail-closed (ADR-004/§8): sin TOTP enrolado NO se emite sesión plena. Se
+    // devuelve un temp_token de alta (`mfa: 'setup'`) que solo sirve para
+    // /platform/auth/mfa/setup y /platform/auth/mfa/confirm.
+    const temp_token = await emitirTemporalAltaMfa(this.jwt, {
+      sub: u.id,
+      platform: true,
+      rol: u.rol,
+    });
+    return { mfa_required: true as const, mfa_setup_required: true as const, temp_token };
   }
 
   /** Verifica el TOTP contra un token temporal y emite el par completo. */
   async verificarMfa(tempToken: string, code: string, ip?: string): Promise<TokenPair> {
-    let payload: { sub?: string; platform?: boolean; mfa?: string };
+    let payload: { sub?: string; platform?: boolean; mfa?: string } | null = null;
     try {
       payload = await this.jwt.verifyAsync(tempToken);
     } catch {
-      throw new UnauthorizedException('MFA inválido');
+      payload = null;
     }
+    // Límite estricto (5/min por IP y por usuario) antes de comprobar el TOTP.
+    const identificador =
+      payload?.platform === true && payload.mfa === 'pending' ? (payload.sub ?? 'sin-usuario') : 'sin-sesion';
+    this.limite.consumir(
+      reglasMfa(ip, identificador),
+      'Demasiados intentos de MFA. Vuelva a intentarlo en un minuto.',
+    );
     if (!payload?.sub || payload.platform !== true || payload.mfa !== 'pending') {
       throw new UnauthorizedException('MFA inválido');
     }
@@ -174,8 +206,16 @@ export class PlatformService {
     const payload = await this.jwt.verifyAsync<{ sub: string }>(rotado.access_token);
     const owner = (await this.db.platformUser.findUnique({ where: { id: payload.sub } })) as unknown as {
       rol: string;
+      activo: boolean;
+      mfaEnabled: boolean;
     } | null;
-    const access_token = await this.jwt.signAsync({ sub: payload.sub, platform: true, rol: owner?.rol ?? 'soporte', mfa: 'ok' });
+    if (!owner?.activo || !owner.mfaEnabled) {
+      // Fail-closed: tampoco el refresh puede emitir sesión plena sin TOTP
+      // enrolado (si no, deshabilitar MFA sería un atajo al panel).
+      await revocarRefresh(this.prisma, rotado.refreshCookie.value);
+      throw new UnauthorizedException('MFA no configurada');
+    }
+    const access_token = await this.jwt.signAsync({ sub: payload.sub, platform: true, rol: owner.rol, mfa: 'ok' });
     return { access_token, refreshCookie: rotado.refreshCookie };
   }
 
@@ -365,7 +405,9 @@ export class PlatformController {
     @Body() dto: LoginDto,
     @Ip() ip: string,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ access_token: string } | { mfa_required: true; temp_token: string }> {
+  ): Promise<
+    { access_token: string } | { mfa_required: true; mfa_setup_required?: boolean; temp_token: string }
+  > {
     const r = await this.service.login(dto, ip);
     if ('refreshCookie' in r && r.refreshCookie) ponerCookiePlatform(res, r.refreshCookie);
     return 'refreshCookie' in r ? { access_token: r.access_token } : r;
@@ -409,6 +451,7 @@ export class PlatformController {
     return { access_token: r.access_token };
   }
 
+  @PermitirAltaMfa()
   @Post('auth/mfa/setup')
   @HttpCode(200)
   iniciarMfa(@Req() req: Request & { platformUser?: { id: string } }): Promise<{
@@ -418,6 +461,7 @@ export class PlatformController {
     return this.service.iniciarMfa(req.platformUser!.id);
   }
 
+  @PermitirAltaMfa()
   @Post('auth/mfa/confirm')
   @HttpCode(200)
   confirmarMfa(
@@ -455,6 +499,8 @@ export class PlatformController {
     return this.service.tenant(id);
   }
 
+  /** Solo `owner`: suspender/reactivar clínicas es una acción crítica (§8). */
+  @PlatformRoles('owner')
   @Patch('tenants/:id')
   actualizarTenant(@Param('id') id: string, @Body() dto: UpdateTenantDto): Promise<unknown> {
     return this.service.actualizarTenant(id, dto);
@@ -465,6 +511,8 @@ export class PlatformController {
     return this.service.metricas(id);
   }
 
+  /** Solo `owner`: exporta datos clínicos completos (offboarding, §12). */
+  @PlatformRoles('owner')
   @Get('tenants/:id/export')
   exportar(@Param('id') id: string): Promise<unknown> {
     return this.service.exportar(id);
@@ -475,6 +523,8 @@ export class PlatformController {
     return this.service.planes();
   }
 
+  /** Solo `owner`: cambiar el plan de una clínica (ADR-008). */
+  @PlatformRoles('owner')
   @Put('subscriptions')
   upsertSubscription(@Body() dto: UpsertSubscriptionDto): Promise<unknown> {
     return this.service.upsertSubscription(dto);

@@ -13,7 +13,7 @@ import type { Request } from 'express';
 import { Platform } from '../../core/auth/platform.decorator.js';
 import { Public } from '../../core/auth/public.decorator.js';
 import { EntitlementsService } from '../../core/entitlements/entitlements.service.js';
-import { PlatformGuard } from '../../core/guards/platform.guard.js';
+import { PlatformGuard, PlatformRoles } from '../../core/guards/platform.guard.js';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
@@ -105,18 +105,31 @@ export class BillingService {
     const fin = new Date(ahora);
     fin.setDate(fin.getDate() + dias);
     const sub = await this.db.subscription.findUnique({ where: { tenantId: dto.tenantId } });
-    return this.db.cobroSuscripcion.create({
-      data: {
-        tenantId: dto.tenantId,
-        subscriptionId: (sub as unknown as { id?: string } | null)?.id ?? null,
-        proveedor: dto.proveedor ?? 'hmac',
-        monto: plan.precioMensual as number,
-        moneda: 'PEN',
-        claveIdempotencia: clave,
-        periodoInicio: ahora,
-        periodoFin: fin,
-      },
-    });
+    try {
+      return await this.db.cobroSuscripcion.create({
+        data: {
+          tenantId: dto.tenantId,
+          subscriptionId: (sub as unknown as { id?: string } | null)?.id ?? null,
+          proveedor: dto.proveedor ?? 'hmac',
+          monto: plan.precioMensual as number,
+          moneda: 'PEN',
+          claveIdempotencia: clave,
+          periodoInicio: ahora,
+          periodoFin: fin,
+        },
+      });
+    } catch (e) {
+      // Carrera de idempotencia: dos checkouts concurrentes con la misma clave
+      // compiten por el @@unique. El perdedor NO debe recibir 409 — el contrato
+      // de ADR-008 es devolver el cobro que ya existe, no fallar.
+      if (e instanceof Error && 'code' in e && (e as { code: string }).code === 'P2002') {
+        const creado = await this.db.cobroSuscripcion.findUnique({
+          where: { claveIdempotencia: clave },
+        });
+        if (creado) return creado;
+      }
+      throw e;
+    }
   }
 
   /** Dunning: ACTIVE vencida → PAST_DUE; PAST_DUE con 7+ días → SUSPENDED. */
@@ -251,17 +264,20 @@ export class PlatformBillingController {
   constructor(private readonly billing: BillingService) {}
 
   @Post('checkout')
+  @PlatformRoles('owner', 'finanzas')
   checkout(@Body() dto: CheckoutDto): Promise<unknown> {
     return this.billing.checkout(dto);
   }
 
   @Post('dunning')
   @HttpCode(200)
+  @PlatformRoles('owner')
   dunning(): Promise<unknown> {
     return this.billing.dunning();
   }
 
   @Get('cobros/:tenantId')
+  @PlatformRoles('owner', 'finanzas')
   cobros(@Param('tenantId') tenantId: string): Promise<unknown> {
     return this.billing.cobrosDe(tenantId);
   }

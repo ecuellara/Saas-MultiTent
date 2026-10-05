@@ -10,6 +10,7 @@ export class CitasController {
   constructor(private readonly service: CitasService) {}
 
   @Get()
+  @RequirePermission('appointments.read')
   listar(@Query('fecha') fecha?: string): Promise<unknown> {
     return this.service.listar(fecha);
   }
@@ -21,6 +22,7 @@ export class CitasController {
   }
 
   @Get(':id')
+  @RequirePermission('appointments.read')
   obtener(@Param('id') id: string): Promise<unknown> {
     return this.service.obtener(id);
   }

@@ -34,6 +34,47 @@ export class CreateTratamientoDto {
   duracionMin?: number;
 }
 
+/**
+ * DTO de actualización como CLASE, nunca `Partial<CreateTratamientoDto>`.
+ * Un `Partial<T>` hace que `emitDecoratorMetadata` emita `Object` como metatipo
+ * y `ValidationPipe.toValidate()` devuelva false: se saltan `whitelist` y
+ * `forbidNonWhitelisted` por completo y llegarían a Prisma campos arbitrarios
+ * (`precio: -100`, `duracionMin: -5`, `deletedAt`, `id`…).
+ */
+export class UpdateTratamientoDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  nombre?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  descripcion?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  especialidadId?: string;
+
+  @ApiPropertyOptional({ example: 120 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  precio?: number;
+
+  @ApiPropertyOptional({ example: 45 })
+  @IsOptional()
+  @IsNumber()
+  @Min(5)
+  duracionMin?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+}
+
 type Row = Record<string, unknown> & { id: string; tenantId: string };
 
 type Db = {
@@ -79,15 +120,22 @@ export class TratamientosService {
     });
   }
 
-  async actualizar(id: string, dto: Partial<CreateTratamientoDto>): Promise<Row> {
+  async actualizar(id: string, dto: UpdateTratamientoDto): Promise<Row> {
     const ctx = requireTenant();
     await this.obtener(id);
     if (dto.especialidadId) {
       const e = await this.db.especialidad.findUnique({ where: { id: dto.especialidadId } });
       if (!e || e.tenantId !== ctx.tenantId) throw new NotFoundException('Especialidad no encontrada');
     }
-    const { tenantId: _ignored, ...resto } = dto as Record<string, unknown>;
-    return this.db.tratamiento.update({ where: { id }, data: resto });
+    // Allowlist explícita: nunca `data: dto` (evita mass assignment).
+    const data: Record<string, unknown> = {};
+    if (dto.nombre !== undefined) data.nombre = dto.nombre;
+    if (dto.descripcion !== undefined) data.descripcion = dto.descripcion;
+    if (dto.especialidadId !== undefined) data.especialidadId = dto.especialidadId;
+    if (dto.precio !== undefined) data.precio = dto.precio;
+    if (dto.duracionMin !== undefined) data.duracionMin = dto.duracionMin;
+    if (dto.activo !== undefined) data.activo = dto.activo;
+    return this.db.tratamiento.update({ where: { id }, data });
   }
 }
 
@@ -114,7 +162,7 @@ export class TratamientosController {
 
   @Patch(':id')
   @RequirePermission('patients.write')
-  actualizar(@Param('id') id: string, @Body() dto: Partial<CreateTratamientoDto>): Promise<unknown> {
+  actualizar(@Param('id') id: string, @Body() dto: UpdateTratamientoDto): Promise<unknown> {
     return this.service.actualizar(id, dto);
   }
 }

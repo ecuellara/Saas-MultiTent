@@ -31,7 +31,7 @@ type Db = {
     findUnique: (a: unknown) => Promise<RefreshRow | null>;
     create: (a: unknown) => Promise<RefreshRow>;
     update: (a: unknown) => Promise<unknown>;
-    updateMany: (a: unknown) => Promise<unknown>;
+    updateMany: (a: unknown) => Promise<{ count: number }>;
   };
 };
 
@@ -76,6 +76,18 @@ export function emitirTemporalMfa(
   return jwt.signAsync({ ...payload, mfa: 'pending' }, { expiresIn: '5m' });
 }
 
+/**
+ * Access temporal de ALTA de MFA (5 min). Solo vale para
+ * `/platform/auth/mfa/setup` y `/platform/auth/mfa/confirm`: `PlatformGuard`
+ * rechaza el claim `mfa: 'setup'` en cualquier otro endpoint.
+ */
+export function emitirTemporalAltaMfa(
+  jwt: JwtService,
+  payload: Record<string, unknown>,
+): Promise<string> {
+  return jwt.signAsync({ ...payload, mfa: 'setup' }, { expiresIn: '5m' });
+}
+
 export function leerRefreshCookie(req: { cookies?: Record<string, string> }): string | null {
   const v = req.cookies?.[REFRESH_COOKIE];
   return typeof v === 'string' && v.length > 0 ? v : null;
@@ -112,6 +124,15 @@ export async function rotarRefresh(
     });
     return null;
   }
+  // Reclamo ATÓMICO antes de crear el hijo: dos peticiones concurrentes con el
+  // mismo refresh compiten por `revokedAt: null` y solo una obtiene count = 1,
+  // así que no pueden quedar dos cadenas vivas. Si el proceso muere entre el
+  // reclamo y la creación, el padre ya está revocado (no hay dos tokens vivos).
+  const reclamado = await db.refreshToken.updateMany({
+    where: { id: fila.id, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  if (reclamado.count !== 1) return null; // otro proceso lo consumió
   const access_token = await jwt.signAsync({ ...accessPayload(fila.userId), mfa: 'ok' });
   const siguiente = crypto.randomBytes(48).toString('hex');
   const expiresAt = new Date();
@@ -119,9 +140,6 @@ export async function rotarRefresh(
   const creado = await db.refreshToken.create({
     data: { kind, userId: fila.userId, tokenHash: hash(siguiente), expiresAt, ip: ip ?? null },
   });
-  await db.refreshToken.update({
-    where: { id: fila.id },
-    data: { revokedAt: new Date(), replacedById: creado.id },
-  });
+  await db.refreshToken.update({ where: { id: fila.id }, data: { replacedById: creado.id } });
   return { access_token, refreshCookie: nuevaCookie(siguiente, kind) };
 }

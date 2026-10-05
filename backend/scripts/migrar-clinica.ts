@@ -59,23 +59,44 @@ function leerArgs(): Args {
 1. Backup origen: pg_dump -U clinica -d clinica_dental -F c -f backup-origen.dump
 2. Congelar escritura en la clínica origen (ventana de corte).
 3. Dry-run: este script con --dry-run (valida transforms y unicidades).
-4. Migración: sin --dry-run. Re-ejecutable si algo falla a medias.
+4. Migración: --confirmo-produccion --backup-verificado <ruta> (re-ejecutable).
 5. Verificar: --solo-verificar (conteos + integridad) y smoke en staging.
 6. Cutover: apuntar frontend/API al SaaS; rollback = volver a la API origen
    (la BD origen no se toca nunca: este script solo LEE de ella).`);
     process.exit(0);
   }
-  const source =
-    v['source'] ?? process.env.CLINICA_SOURCE_URL ?? 'postgresql://clinica:clinica123@localhost:5432/clinica_dental';
+  const source = v['source'] ?? process.env.CLINICA_SOURCE_URL ?? '';
   const target = v['target'] ?? process.env.DATABASE_URL ?? '';
+  // Sin valor por defecto para el origen: un fallback con credenciales
+  // hardcodeadas puede leer de una base de datos equivocada sin avisar.
+  if (!source) throw new Error('Falta --source o CLINICA_SOURCE_URL');
   if (!target) throw new Error('Falta --target o DATABASE_URL');
+  if (source === target) throw new Error('Origen y destino son la misma BD: abortado');
+  const dryRun = 'dry-run' in v;
+  const soloVerificar = 'solo-verificar' in v;
+  // Barrera de entorno: sin --dry-run el script ESCRIBE en --target, que por
+  // defecto es DATABASE_URL y puede ser producción.
+  if (!dryRun && !soloVerificar) {
+    if (!('confirmo-produccion' in v)) {
+      throw new Error(
+        'Migración abortada: sin --dry-run se escribe en la BD destino. ' +
+          'Añade --confirmo-produccion tras verificar el backup y el destino.',
+      );
+    }
+    if (v['backup-verificado'] === undefined) {
+      throw new Error(
+        'Migración abortada: indica --backup-verificado <ruta> ' +
+          '(o --backup-verificado=no-aplica si el destino está vacío).',
+      );
+    }
+  }
   return {
     source,
     target,
     slug: v['slug'] ?? 'dental-cuellar',
     nombre: v['nombre'] ?? '',
-    dryRun: 'dry-run' in v,
-    soloVerificar: 'solo-verificar' in v,
+    dryRun,
+    soloVerificar,
     uploadsOrigen: v['uploads-origen'] ?? '',
     uploadsDestino: v['uploads-destino'] ?? '',
   };
@@ -319,7 +340,7 @@ async function main(): Promise<void> {
     }));
     await copiarSimple('MovimientoInventario', 'movimientoInventario', (f) => ({ ...f, tenantId, id: undefined, usuarioId: null }));
     await copiarSimple('Compra', 'compra', (f) => ({
-      ...f, tenantId, id: undefined, sedeId: null, usuarioId: null, montoTotal: String(f.montoTotal),
+      ...f, tenantId, id: undefined, sedeId, usuarioId: null, montoTotal: String(f.montoTotal),
     }));
     await copiarSimple('CompraDetalle', 'compraDetalle', (f) => ({
       ...f, tenantId, id: undefined, precioUnit: String(f.precioUnit), subtotal: String(f.subtotal),
@@ -457,6 +478,30 @@ async function verificar(origen: Pool, destino: PrismaClient, tenantId: string):
   );
   console.log(`  ${saldos === 0 ? 'OK  ' : 'FAIL'} pagos con saldo inconsistente: ${saldos}`);
   if (saldos !== 0) mal++;
+
+  // Integridad REFERENCIAL: comparar solo COUNT(*) no detecta hijos huérfanos
+  // (una FK rota pasa desapercibida porque el número de filas coincide).
+  const huerfanos: Array<[string, string]> = [
+    ['Cita→Paciente', `SELECT COUNT(*)::int AS n FROM "Cita" h LEFT JOIN "Paciente" p ON p.id = h."pacienteId" WHERE h."tenantId" = $1 AND p.id IS NULL`],
+    ['Cita→Tratamiento', `SELECT COUNT(*)::int AS n FROM "Cita" h LEFT JOIN "Tratamiento" t ON t.id = h."tratamientoId" WHERE h."tenantId" = $1 AND h."tratamientoId" IS NOT NULL AND t.id IS NULL`],
+    ['HistorialClinico→Paciente', `SELECT COUNT(*)::int AS n FROM "HistorialClinico" h LEFT JOIN "Paciente" p ON p.id = h."pacienteId" WHERE h."tenantId" = $1 AND p.id IS NULL`],
+    ['Odontograma→Paciente', `SELECT COUNT(*)::int AS n FROM "Odontograma" h LEFT JOIN "Paciente" p ON p.id = h."pacienteId" WHERE h."tenantId" = $1 AND p.id IS NULL`],
+    ['OdontogramaHallazgo→Odontograma', `SELECT COUNT(*)::int AS n FROM "OdontogramaHallazgo" h LEFT JOIN "Odontograma" o ON o.id = h."odontogramaId" WHERE h."tenantId" = $1 AND o.id IS NULL`],
+    ['OdontogramaEvento→Odontograma', `SELECT COUNT(*)::int AS n FROM "OdontogramaEvento" h LEFT JOIN "Odontograma" o ON o.id = h."odontogramaId" WHERE h."tenantId" = $1 AND o.id IS NULL`],
+    ['PagoDetalle→Pago', `SELECT COUNT(*)::int AS n FROM "PagoDetalle" h LEFT JOIN "Pago" p ON p.id = h."pagoId" WHERE h."tenantId" = $1 AND p.id IS NULL`],
+    ['Cuota→Pago', `SELECT COUNT(*)::int AS n FROM "Cuota" h LEFT JOIN "Pago" p ON p.id = h."pagoId" WHERE h."tenantId" = $1 AND p.id IS NULL`],
+    ['CompraDetalle→Compra', `SELECT COUNT(*)::int AS n FROM "CompraDetalle" h LEFT JOIN "Compra" c ON c.id = h."compraId" WHERE h."tenantId" = $1 AND c.id IS NULL`],
+    ['MovimientoInventario→Insumo', `SELECT COUNT(*)::int AS n FROM "MovimientoInventario" h LEFT JOIN "Insumo" i ON i.id = h."insumoId" WHERE h."tenantId" = $1 AND i.id IS NULL`],
+    ['DocumentoPaciente→Paciente', `SELECT COUNT(*)::int AS n FROM "DocumentoPaciente" h LEFT JOIN "Paciente" p ON p.id = h."pacienteId" WHERE h."tenantId" = $1 AND p.id IS NULL`],
+    ['ConsentimientoFirmado→Paciente', `SELECT COUNT(*)::int AS n FROM "ConsentimientoFirmado" h LEFT JOIN "Paciente" p ON p.id = h."pacienteId" WHERE h."tenantId" = $1 AND p.id IS NULL`],
+  ];
+  for (const [nombre, sql] of huerfanos) {
+    const n = Number(
+      ((await destino.$queryRawUnsafe(sql, tenantId)) as Array<{ n: number }>)[0].n,
+    );
+    console.log(`  ${n === 0 ? 'OK  ' : 'FAIL'} huérfanos ${nombre}: ${n}`);
+    if (n !== 0) mal++;
+  }
   if (mal > 0) {
     console.error(`VERIFICACIÓN FALLIDA (${mal} controles)`);
     process.exitCode = 1;

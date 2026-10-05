@@ -108,6 +108,7 @@ export class HistorialesController {
   constructor(private readonly service: HistorialesService) {}
 
   @Get()
+  @RequirePermission('patients.read')
   listar(@Query('pacienteId') pacienteId: string): Promise<unknown> {
     return this.service.listar(pacienteId);
   }

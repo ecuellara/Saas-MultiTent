@@ -132,12 +132,22 @@ describe('Smoke Fase 7', () => {
     const l1 = await request(srv).post('/api/platform/auth/login')
       .send({ email: 'mfa-owner@test.pe', password: 'Owner-Mfa-2026!!' })
       .expect(200);
-    const pleno = l1.body.access_token as string;
-    const PH = { Authorization: `Bearer ${pleno}` };
-    const setup = await request(srv).post('/api/platform/auth/mfa/setup').set(PH).expect(200);
+    // Fail-closed (ADR-004): sin TOTP enrolado el login NO entrega access_token,
+    // solo un temporal válido para setup/confirm.
+    expect(l1.body.mfa_setup_required).toBe(true);
+    const temp = l1.body.temp_token as string;
+    const setup = await request(srv)
+      .post('/api/platform/auth/mfa/setup')
+      .set({ Authorization: `Bearer ${temp}` })
+      .expect(200);
     expect(setup.body.secret).toBeTruthy();
     expect(setup.body.otpauth_url).toContain('otpauth://');
-    await request(srv).post('/api/platform/auth/mfa/confirm').set(PH)
+    // El temporal de alta NO sirve para el panel.
+    await request(srv).get('/api/platform/tenants')
+      .set({ Authorization: `Bearer ${temp}` })
+      .expect(401);
+    await request(srv).post('/api/platform/auth/mfa/confirm')
+      .set({ Authorization: `Bearer ${temp}` })
       .send({ code: await generarCodigoTotp(setup.body.secret as string) })
       .expect(200);
     // Desde ahora el login con clave devuelve temporal MFA.

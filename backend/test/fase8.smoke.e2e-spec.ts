@@ -11,6 +11,7 @@ import { AppModule } from '../src/app.module.js';
 import { canonico } from '../src/modules/facturacion/verificadores.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { PASSWORD_PLAIN, limpiarDosTenants, seedDosTenants, type DosTenants } from './helpers/tenants-fixture.js';
+import { loginPlataformaConMfa } from './helpers/platform-login.js';
 
 type Db = {
   plan: {
@@ -32,6 +33,9 @@ type Db = {
   };
   webhookEvent: {
     deleteMany: (a: unknown) => Promise<unknown>;
+  };
+  cobroSuscripcion: {
+    count: (a: unknown) => Promise<number>;
   };
 };
 
@@ -72,11 +76,13 @@ describe('Smoke Fase 8', () => {
       .send({ email: datos.a.userEmail, password: PASSWORD_PLAIN })
       .expect(200);
     adminH = { Authorization: `Bearer ${login.body.access_token}`, 'X-Tenant-Id': datos.a.tenantId };
-    const plogin = await request(app.getHttpServer())
-      .post('/api/platform/auth/login')
-      .send({ email: 'billing-owner@test.pe', password: 'Owner-Billing-2026!' })
-      .expect(200);
-    PH = { Authorization: `Bearer ${plogin.body.access_token}` };
+    // MFA de plataforma obligatoria (ADR-004): sin TOTP no hay access_token.
+    const sesion = await loginPlataformaConMfa(
+      app.getHttpServer(),
+      'billing-owner@test.pe',
+      'Owner-Billing-2026!',
+    );
+    PH = { Authorization: `Bearer ${sesion.access}` };
     // Suscripción base ACTIVE con fin futuro.
     const fin = new Date();
     fin.setDate(fin.getDate() + 30);
@@ -208,5 +214,38 @@ describe('Smoke Fase 8', () => {
       periodoInicio: new Date().toISOString(), periodoFin: futuro.toISOString(),
     }).expect(200);
     await request(srv).get(`/api/pacientes/${datos.a.pacienteId}`).set(adminH).expect(200);
+  });
+
+  it('checkout concurrente con la misma clave: sin 409 y un único cobro', async () => {
+    const srv = app.getHttpServer();
+    // Plan distinto → clave de idempotencia NUEVA (chk-<tenant>-consultorio-<YYYYMM>).
+    // Así la carrera ocurre de verdad sobre el @@unique y no una simple lectura
+    // del cobro ya existente de las pruebas anteriores.
+    await db.plan.create({
+      data: { codigo: 'consultorio', nombre: 'Consultorio', descripcion: '', precioMensual: 99 },
+    });
+
+    const pedir = () =>
+      request(srv)
+        .post('/api/platform/facturacion/checkout')
+        .set(PH)
+        .send({ tenantId: datos.a.tenantId, planCodigo: 'consultorio' });
+
+    const respuestas = await Promise.all([pedir(), pedir(), pedir()]);
+
+    // Contrato de ADR-008: el perdedor de la carrera devuelve el cobro que ya
+    // existe, nunca un 409 (que era el comportamiento anterior).
+    for (const r of respuestas) {
+      expect(r.status, `respuesta inesperada: ${JSON.stringify(r.body)}`).toBe(201);
+    }
+    expect(new Set(respuestas.map((r) => r.body.id)).size).toBe(1);
+
+    const filas = await db.cobroSuscripcion.count({
+      where: {
+        tenantId: datos.a.tenantId,
+        claveIdempotencia: { startsWith: `chk-${datos.a.tenantId}-consultorio-` },
+      },
+    });
+    expect(filas).toBe(1);
   });
 });
