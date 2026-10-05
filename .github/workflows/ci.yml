@@ -20,6 +20,9 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      DATABASE_URL: postgresql://postgres:test@localhost:5432/dental_saas_test
+      JWT_SECRET: secreto-de-pruebas-de-al-menos-32-caracteres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,9 +34,4 @@ jobs:
       - run: npx prisma validate
       - run: npx tsc --noEmit
       - run: npx prisma migrate deploy
-        env:
-          DATABASE_URL: postgresql://postgres:test@localhost:5432/dental_saas_test
       - run: npx vitest run --config vitest.config.e2e.ts --fileParallelism=false
-        env:
-          DATABASE_URL: postgresql://postgres:test@localhost:5432/dental_saas_test
-          JWT_SECRET: secreto-de-pruebas-de-al-menos-32-caracteres
