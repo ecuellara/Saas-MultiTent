@@ -26,6 +26,15 @@ export interface CreateDocumentoDto {
   tamanioKb?: number;
 }
 
+/** Documento listo para entregarse como archivo (no como metadatos JSON). */
+export interface DocumentoDescarga {
+  buffer: Buffer;
+  /** Nombre saneado que viaja en el `Content-Disposition`. */
+  nombreArchivo: string;
+  /** MIME verificado contra la firma real del contenido en disco. */
+  mimeType: string;
+}
+
 @Injectable()
 export class PacientesService {
   constructor(
@@ -81,7 +90,22 @@ export class PacientesService {
 
   async documentos(id: string): Promise<unknown> {
     await this.obtener(id);
-    return this.db.documentoPaciente.findMany({ where: { pacienteId: id, deletedAt: null } });
+    // `storageKey` NO se expone: es una ruta interna del almacenamiento, no le
+    // sirve al cliente (la descarga tiene su propio endpoint) y publicarla
+    // facilita mapear la estructura del bucket.
+    return this.db.documentoPaciente.findMany({
+      where: { pacienteId: id, deletedAt: null },
+      select: {
+        id: true,
+        pacienteId: true,
+        nombreArchivo: true,
+        tipo: true,
+        mimeType: true,
+        tamanioKb: true,
+        url: true,
+        createdAt: true,
+      },
+    });
   }
 
   async registrarDocumento(id: string, dto: CreateDocumentoDto): Promise<Record<string, unknown>> {
@@ -115,7 +139,14 @@ export class PacientesService {
     });
   }
 
-  async descarga(id: string, docId: string): Promise<Record<string, unknown>> {
+  /**
+   * Entrega el ARCHIVO del documento (proveedor local), no sus metadatos.
+   *
+   * Antes devolvía la fila `DocumentoPaciente` —incluida la `storageKey` en
+   * claro— y el controlador la serializaba como JSON: el usuario pedía una
+   * descarga y recibía un JSON con la ruta interna del archivo.
+   */
+  async descarga(id: string, docId: string): Promise<DocumentoDescarga> {
     const ctx = requireTenant();
     const paciente = await this.obtener(id);
     const doc = await this.db.documentoPaciente.findUnique({ where: { id: docId } });
@@ -127,9 +158,19 @@ export class PacientesService {
     ) {
       throw new NotFoundException('Documento no encontrado');
     }
-    // Defensa en profundidad: revalida la clave almacenada antes de entregarla.
-    this.storage.assertClaveTenant(ctx.tenantId, doc.storageKey as string);
-    return doc;
+    // Defensa en profundidad: revalida la clave almacenada (prefijo del tenant
+    // y sin traversal) y valida la firma real del contenido contra el mimeType
+    // declarado antes de entregar un solo byte.
+    const buffer = await this.storage.leerDocumentoValidado(
+      ctx.tenantId,
+      doc.storageKey as string,
+      doc.mimeType as string,
+    );
+    return {
+      buffer,
+      nombreArchivo: doc.nombreArchivo as string,
+      mimeType: doc.mimeType as string,
+    };
   }
 
   async odontogramas(id: string): Promise<unknown> {

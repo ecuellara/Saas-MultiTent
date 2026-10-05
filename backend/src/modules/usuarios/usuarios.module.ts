@@ -38,6 +38,19 @@ type UserRow = Record<string, unknown> & {
   memberships?: MembershipRow[];
 };
 
+/**
+ * Delegados que usa el módulo. Se reutiliza como tipo del cliente de
+ * transacción que entrega `EntitlementsService.crearConLimite`.
+ */
+type DbUsuarios = {
+  role: { findUnique: (a: unknown) => Promise<{ tenantId: string } | null> };
+  sede: { findUnique: (a: unknown) => Promise<{ tenantId: string } | null> };
+  user: {
+    findUnique: (a: unknown) => Promise<{ id: string } | null>;
+    create: (a: unknown) => Promise<Record<string, unknown>>;
+  };
+};
+
 @Injectable()
 export class UsuariosService {
   constructor(
@@ -68,40 +81,39 @@ export class UsuariosService {
     } catch (e) {
       throw new BadRequestException((e as Error).message);
     }
-    const db = this.prisma as unknown as {
-      role: { findUnique: (a: unknown) => Promise<{ tenantId: string } | null> };
-      sede: { findUnique: (a: unknown) => Promise<{ tenantId: string } | null> };
-      membership: { count: (a: unknown) => Promise<number> };
-      user: {
-        findUnique: (a: unknown) => Promise<{ id: string } | null>;
-        create: (a: unknown) => Promise<Record<string, unknown>>;
-      };
-    };
+    const db = this.prisma as unknown as DbUsuarios;
     const existente = await db.user.findUnique({ where: { email: dto.email } });
     if (existente) throw new BadRequestException('Email ya registrado');
     const role = await db.role.findUnique({ where: { id: dto.roleId } });
     if (!role || role.tenantId !== ctx.tenantId) throw new NotFoundException('Rol no encontrado');
     const sede = await db.sede.findUnique({ where: { id: dto.sedeId } });
     if (!sede || sede.tenantId !== ctx.tenantId) throw new NotFoundException('Sede no encontrada');
-    const activos = await db.membership.count({
-      where: { tenantId: ctx.tenantId, estado: 'ACTIVE' },
-    });
-    await this.entitlements.checkLimit(ctx.tenantId, 'max_usuarios', activos);
+    // El hash (argon2id) es caro: se calcula fuera de la transacción, que solo
+    // debe contener el recuento del límite y la inserción.
     const passwordHash = await hashPassword(dto.password);
-    const creado = await db.user.create({
-      data: {
-        email: dto.email,
-        passwordHash,
-        passwordAlgo: 'argon2id',
-        nombre: dto.nombre,
-        memberships: {
-          create: { tenantId: ctx.tenantId, roleId: dto.roleId, sedeId: dto.sedeId },
-        },
+    // Límite y alta atómicos (`crearConLimite`): con el lock del tenant tomado
+    // se recuentan las `Membership` ACTIVE, así que N altas simultáneas no
+    // pueden superar el `max_usuarios` del plan.
+    return this.entitlements.crearConLimite<Record<string, unknown>, DbUsuarios>(
+      ctx.tenantId,
+      'max_usuarios',
+      async (tx) => {
+        const creado = await tx.user.create({
+          data: {
+            email: dto.email,
+            passwordHash,
+            passwordAlgo: 'argon2id',
+            nombre: dto.nombre,
+            memberships: {
+              create: { tenantId: ctx.tenantId, roleId: dto.roleId, sedeId: dto.sedeId },
+            },
+          },
+          include: { memberships: true },
+        });
+        const { passwordHash: _omit, mfaSecret: _omit2, ...seguro } = creado;
+        return seguro;
       },
-      include: { memberships: true },
-    });
-    const { passwordHash: _omit, mfaSecret: _omit2, ...seguro } = creado;
-    return seguro;
+    );
   }
 }
 

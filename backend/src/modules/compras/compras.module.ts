@@ -1,7 +1,13 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { BadRequestException, Injectable, Module, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Module,
+  NotFoundException,
+} from '@nestjs/common';
 import { IsArray, IsDateString, IsInt, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
@@ -101,93 +107,105 @@ export class ComprasService {
     // Total = suma de subtotales, calculado en céntimos enteros (política única).
     const subtotalesCent = dto.detalles.map((d) => aCentimos(d.cantidad * d.precioUnit));
     const montoTotal = desdeCentimos(subtotalesCent.reduce((s, v) => s + v, 0));
-    const codigo = await this.secuencias.siguienteCodigoCompra(fecha);
-    // El egreso usa el mismo correlativo REC-<año> de los ingresos. Se calcula
-    // FUERA de la transacción: contar dentro de ella consumiría otra conexión
-    // con la transacción abierta.
-    const reciboEgreso = await this.secuencias.siguienteCodigoRecibo(fecha);
-
-    return this.prisma.$transaction(
-      async (tx) => {
-        const t = tx as unknown as {
-          compra: { create: (a: unknown) => Promise<CompraRow> };
-          insumo: {
-            findFirstOrThrow: (a: unknown) => Promise<{ stockActual: number }>;
-            update: (a: unknown) => Promise<unknown>;
-          };
-          movimientoInventario: { create: (a: unknown) => Promise<unknown> };
-          pago: { create: (a: unknown) => Promise<unknown> };
-        };
-        const compra = await t.compra.create({
-          data: {
-            tenantId: ctx.tenantId,
-            proveedorId: dto.proveedorId,
-            sedeId: dto.sedeId ?? ctx.sedeId ?? null,
-            codigo,
-            fecha,
-            montoTotal,
-            observacion: dto.observacion ?? null,
-            usuarioId: ctx.userId,
-            detalles: {
-              create: dto.detalles.map((d, i) => ({
+    // Los correlativos se calculan FUERA de la transacción (hacerlo dentro
+    // consumiría otra conexión con la transacción abierta), así que dos compras
+    // simultáneas pueden chocar en los `@@unique`. Antes no había reintento y el
+    // P2002 devolvía 409, perdiendo la compra completa.
+    for (let intento = 0; intento < 3; intento++) {
+      const codigo = await this.secuencias.siguienteCodigoCompra(fecha);
+      // El egreso usa el mismo correlativo REC-<año> que los ingresos.
+      const reciboEgreso = await this.secuencias.siguienteCodigoRecibo(fecha);
+      try {
+        return await this.prisma.$transaction(
+          async (tx) => {
+            const t = tx as unknown as {
+              compra: { create: (a: unknown) => Promise<CompraRow> };
+              insumo: {
+                findFirstOrThrow: (a: unknown) => Promise<{ stockActual: number }>;
+                update: (a: unknown) => Promise<unknown>;
+              };
+              movimientoInventario: { create: (a: unknown) => Promise<unknown> };
+              pago: { create: (a: unknown) => Promise<unknown> };
+            };
+            const compra = await t.compra.create({
+              data: {
                 tenantId: ctx.tenantId,
-                insumoId: d.insumoId,
-                cantidad: d.cantidad,
-                precioUnit: d.precioUnit,
-                subtotal: desdeCentimos(subtotalesCent[i] ?? 0),
-              })),
-            },
+                proveedorId: dto.proveedorId,
+                sedeId: dto.sedeId ?? ctx.sedeId ?? null,
+                codigo,
+                fecha,
+                montoTotal,
+                observacion: dto.observacion ?? null,
+                usuarioId: ctx.userId,
+                detalles: {
+                  create: dto.detalles.map((d, i) => ({
+                    tenantId: ctx.tenantId,
+                    insumoId: d.insumoId,
+                    cantidad: d.cantidad,
+                    precioUnit: d.precioUnit,
+                    subtotal: desdeCentimos(subtotalesCent[i] ?? 0),
+                  })),
+                },
+              },
+            });
+            for (const d of dto.detalles) {
+              // Lectura acotada al tenant + incremento ATÓMICO del stock: no se
+              // pierde una entrada cuando hay compras concurrentes del insumo.
+              const ins = await t.insumo.findFirstOrThrow({
+                where: { id: d.insumoId, tenantId: ctx.tenantId },
+              });
+              const anterior = ins.stockActual;
+              await t.insumo.update({
+                where: { id: d.insumoId },
+                data: { stockActual: { increment: d.cantidad } },
+              });
+              await t.movimientoInventario.create({
+                data: {
+                  tenantId: ctx.tenantId,
+                  insumoId: d.insumoId,
+                  tipo: 'entrada',
+                  cantidad: d.cantidad,
+                  stockAnterior: anterior,
+                  stockNuevo: anterior + d.cantidad,
+                  motivo: `compra ${codigo}`,
+                  referenciaTipo: 'compra',
+                  referenciaId: compra.id,
+                  usuarioId: ctx.userId,
+                },
+              });
+            }
+            // El egreso en caja va en la MISMA transacción (doc §2: no perder
+            // "compra atómica que actualiza stock y genera el egreso"). Si falla,
+            // no queda stock incrementado sin gasto registrado.
+            await t.pago.create({
+              data: {
+                tenantId: ctx.tenantId,
+                codigoRecibo: reciboEgreso,
+                tipo: 'egreso',
+                concepto: `Compra ${codigo}`,
+                montoTotal,
+                montoPagado: montoTotal,
+                saldo: 0,
+                estado: 'pagado',
+                referenciaTipo: 'compra',
+                referenciaId: compra.id,
+                fecha,
+                usuarioId: ctx.userId,
+              },
+            });
+            return compra;
           },
-        });
-        for (const d of dto.detalles) {
-          // Lectura acotada al tenant + incremento ATÓMICO del stock: no se
-          // pierde una entrada cuando hay compras concurrentes del mismo insumo.
-          const ins = await t.insumo.findFirstOrThrow({
-            where: { id: d.insumoId, tenantId: ctx.tenantId },
-          });
-          const anterior = ins.stockActual;
-          await t.insumo.update({
-            where: { id: d.insumoId },
-            data: { stockActual: { increment: d.cantidad } },
-          });
-          await t.movimientoInventario.create({
-            data: {
-              tenantId: ctx.tenantId,
-              insumoId: d.insumoId,
-              tipo: 'entrada',
-              cantidad: d.cantidad,
-              stockAnterior: anterior,
-              stockNuevo: anterior + d.cantidad,
-              motivo: `compra ${codigo}`,
-              referenciaTipo: 'compra',
-              referenciaId: compra.id,
-              usuarioId: ctx.userId,
-            },
-          });
-        }
-        // El egreso en caja va en la MISMA transacción (doc §2: no perder
-        // "compra atómica que actualiza stock y genera el egreso"). Si falla,
-        // no queda stock incrementado sin gasto registrado.
-        await t.pago.create({
-          data: {
-            tenantId: ctx.tenantId,
-            codigoRecibo: reciboEgreso,
-            tipo: 'egreso',
-            concepto: `Compra ${codigo}`,
-            montoTotal,
-            montoPagado: montoTotal,
-            saldo: 0,
-            estado: 'pagado',
-            referenciaTipo: 'compra',
-            referenciaId: compra.id,
-            fecha,
-            usuarioId: ctx.userId,
-          },
-        });
-        return compra;
-      },
-      { isolationLevel: 'Serializable' },
-    );
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (e) {
+        // Choque de correlativo (P2002) o conflicto de serialización (P2034):
+        // se recalculan los códigos en la siguiente vuelta.
+        const code = (e as { code?: string } | null)?.code;
+        if ((code === 'P2002' || code === 'P2034') && intento < 2) continue;
+        throw e;
+      }
+    }
+    throw new ConflictException('No se pudo registrar la compra por concurrencia; reintente');
   }
 }
 

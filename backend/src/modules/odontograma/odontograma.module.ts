@@ -189,32 +189,100 @@ export class OdontogramaService {
       throw new BadRequestException('Este hallazgo es de pieza completa (sin superficies)');
     }
 
-    const hallazgo = await db.odontogramaHallazgo.create({
-      data: {
-        tenantId: ctx.tenantId,
-        odontogramaId: id,
-        pieza: dto.pieza,
-        hallazgoCodigo: dto.hallazgoCodigo,
-        superficies,
-        estadoClinico: 'patologico',
-        color: cat.colorDefecto,
-        material: dto.material ?? null,
-        tratamientoId: dto.tratamientoId ?? null,
-        citaId: dto.citaId ?? null,
-      },
+    // Hallazgo + evento en UNA transacción: si el evento falla, no queda un
+    // hallazgo sin traza en el historial NTS 188. Además `estadoAnterior` se
+    // toma del último evento de esa pieza (antes quedaba siempre vacío).
+    return this.prisma.$transaction(async (tx) => {
+      const t = tx as unknown as {
+        odontogramaEvento: {
+          findFirst: (a: unknown) => Promise<{ estadoNuevo: string } | null>;
+          create: (a: unknown) => Promise<unknown>;
+        };
+        odontogramaHallazgo: { create: (a: unknown) => Promise<unknown> };
+      };
+      const previo = await t.odontogramaEvento.findFirst({
+        where: { odontogramaId: id, pieza: dto.pieza },
+        orderBy: { fecha: 'desc' },
+      });
+      const hallazgo = await t.odontogramaHallazgo.create({
+        data: {
+          tenantId: ctx.tenantId,
+          odontogramaId: id,
+          pieza: dto.pieza,
+          hallazgoCodigo: dto.hallazgoCodigo,
+          superficies,
+          estadoClinico: 'patologico',
+          color: cat.colorDefecto,
+          material: dto.material ?? null,
+          tratamientoId: dto.tratamientoId ?? null,
+          citaId: dto.citaId ?? null,
+        },
+      });
+      await t.odontogramaEvento.create({
+        data: {
+          tenantId: ctx.tenantId,
+          odontogramaId: id,
+          pieza: dto.pieza,
+          estadoAnterior: previo?.estadoNuevo ?? null,
+          estadoNuevo: dto.hallazgoCodigo,
+          tratamientoId: dto.tratamientoId ?? null,
+          citaId: dto.citaId ?? null,
+          observacion: `hallazgo ${dto.hallazgoCodigo}`,
+        },
+      });
+      return hallazgo;
     });
-    await db.odontogramaEvento.create({
-      data: {
-        tenantId: ctx.tenantId,
-        odontogramaId: id,
-        pieza: dto.pieza,
-        estadoNuevo: dto.hallazgoCodigo,
-        tratamientoId: dto.tratamientoId ?? null,
-        citaId: dto.citaId ?? null,
-        observacion: `hallazgo ${dto.hallazgoCodigo}`,
-      },
+  }
+
+  /**
+   * Anula un hallazgo: `activo = false` (anular ≠ borrar, requisito del doc) y
+   * deja la traza en el historial. Requiere que el odontograma no esté firmado.
+   */
+  async anularHallazgo(odontogramaId: string, hallazgoId: string): Promise<unknown> {
+    const ctx = requireTenant();
+    const o = await this.obtener(odontogramaId);
+    if (o.estado === 'firmado') {
+      throw new BadRequestException('Odontograma firmado: solo lectura');
+    }
+    type Hallazgo = {
+      id: string;
+      tenantId: string;
+      odontogramaId: string;
+      pieza: string;
+      hallazgoCodigo: string;
+      activo: boolean;
+    };
+    const db = this.prisma as unknown as {
+      odontogramaHallazgo: { findUnique: (a: unknown) => Promise<Hallazgo | null> };
+    };
+    const h = await db.odontogramaHallazgo.findUnique({ where: { id: hallazgoId } });
+    // `update` por id no se filtra por tenant: la pertenencia se comprueba aquí.
+    if (!h || h.tenantId !== ctx.tenantId || h.odontogramaId !== odontogramaId) {
+      throw new NotFoundException('Hallazgo no encontrado');
+    }
+    if (!h.activo) return h;
+
+    return this.prisma.$transaction(async (tx) => {
+      const t = tx as unknown as {
+        odontogramaHallazgo: { update: (a: unknown) => Promise<unknown> };
+        odontogramaEvento: { create: (a: unknown) => Promise<unknown> };
+      };
+      const anulado = await t.odontogramaHallazgo.update({
+        where: { id: hallazgoId },
+        data: { activo: false },
+      });
+      await t.odontogramaEvento.create({
+        data: {
+          tenantId: ctx.tenantId,
+          odontogramaId,
+          pieza: h.pieza,
+          estadoAnterior: h.hallazgoCodigo,
+          estadoNuevo: 'anulado',
+          observacion: `hallazgo ${h.hallazgoCodigo} anulado`,
+        },
+      });
+      return anulado;
     });
-    return hallazgo;
   }
 }
 
@@ -245,6 +313,15 @@ export class OdontogramaController {
   @RequirePermission('patients.write')
   hallazgo(@Param('id') id: string, @Body() dto: AddHallazgoDto): Promise<unknown> {
     return this.service.agregarHallazgo(id, dto);
+  }
+
+  @Patch(':id/hallazgos/:hallazgoId/anular')
+  @RequirePermission('patients.write')
+  anularHallazgo(
+    @Param('id') id: string,
+    @Param('hallazgoId') hallazgoId: string,
+  ): Promise<unknown> {
+    return this.service.anularHallazgo(id, hallazgoId);
   }
 }
 

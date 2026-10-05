@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Ip, Param, Patch, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Ip, Param, Patch, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { BadRequestException, Injectable, Module, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -72,6 +72,14 @@ export type ResultadoLoginPlataforma =
   | { mfa_required: true; temp_token: string }
   | { mfa_required: true; mfa_setup_required: true; temp_token: string };
 
+/** Resultados admitidos por `PlatformAuditLog.metadata.resultado`. */
+type ResultadoAuditoria = 'SUCCESS' | 'FAILURE';
+
+/** Forma mínima del cliente Prisma que usa la auditoría de plataforma. */
+interface ClienteAuditoria {
+  platformAuditLog: { create: (a: { data: unknown }) => Promise<unknown> };
+}
+
 @Injectable()
 export class PlatformService {
   /**
@@ -92,7 +100,45 @@ export class PlatformService {
     return this.prisma as unknown as PlatformService['db'];
   }
 
-  async login(dto: LoginDto, ip?: string): Promise<ResultadoLoginPlataforma> {
+  /**
+   * Auditoría de plataforma (doc §10). `/platform/auth/*` es `@Public`, así que
+   * el `AuditInterceptor` global no puede resolver el `platformUserId` y esas
+   * acciones se perderían: las escribe el propio servicio en `PlatformAuditLog`.
+   *
+   * Nunca rompe la petición: cualquier fallo de escritura se traga (igual que
+   * el interceptor). `platformUserId` es NOT NULL con FK, por lo que un intento
+   * con email inexistente no se puede registrar en esta tabla.
+   */
+  private async auditar(
+    platformUserId: string,
+    datos: {
+      accion: string;
+      recurso: string;
+      ip?: string;
+      userAgent?: string;
+      resultado: ResultadoAuditoria;
+      detalle?: string;
+    },
+  ): Promise<void> {
+    try {
+      const db = this.prisma as unknown as ClienteAuditoria;
+      await db.platformAuditLog.create({
+        data: {
+          platformUserId,
+          accion: datos.accion,
+          recurso: datos.recurso,
+          recursoId: null,
+          metadata: { resultado: datos.resultado, ...(datos.detalle ? { detalle: datos.detalle } : {}) },
+          ip: datos.ip ?? null,
+          userAgent: datos.userAgent ?? null,
+        },
+      });
+    } catch {
+      // Traga el error a propósito: la auditoría no puede tumbar la petición.
+    }
+  }
+
+  async login(dto: LoginDto, ip?: string, userAgent?: string): Promise<ResultadoLoginPlataforma> {
     this.limite.consumir(reglasLogin(ip, dto.email));
     const u = (await this.db.platformUser.findUnique({ where: { email: dto.email } })) as unknown as {
       id: string;
@@ -103,9 +149,31 @@ export class PlatformService {
       rol: string;
       mfaEnabled: boolean;
     } | null;
-    if (!u || !u.activo) throw new NotFoundException('Credenciales inválidas');
+    // Email inexistente: no hay `platformUserId` que registrar (FK NOT NULL).
+    if (!u) throw new NotFoundException('Credenciales inválidas');
+    if (!u.activo) {
+      await this.auditar(u.id, {
+        accion: 'POST /api/platform/auth/login',
+        recurso: 'platformUser',
+        ip,
+        userAgent,
+        resultado: 'FAILURE',
+        detalle: 'Usuario inactivo',
+      });
+      throw new NotFoundException('Credenciales inválidas');
+    }
     const { ok, upgradedHash } = await verificarPassword(u.passwordHash, u.passwordAlgo, dto.password);
-    if (!ok) throw new NotFoundException('Credenciales inválidas');
+    if (!ok) {
+      await this.auditar(u.id, {
+        accion: 'POST /api/platform/auth/login',
+        recurso: 'platformUser',
+        ip,
+        userAgent,
+        resultado: 'FAILURE',
+        detalle: 'Credenciales inválidas',
+      });
+      throw new NotFoundException('Credenciales inválidas');
+    }
     if (upgradedHash) {
       await this.db.platformUser.update({
         where: { id: u.id },
@@ -113,12 +181,28 @@ export class PlatformService {
       });
     }
     if (u.mfaEnabled) {
+      await this.auditar(u.id, {
+        accion: 'POST /api/platform/auth/login',
+        recurso: 'platformUser',
+        ip,
+        userAgent,
+        resultado: 'SUCCESS',
+        detalle: 'Credenciales válidas, MFA pendiente',
+      });
       const temp_token = await emitirTemporalMfa(this.jwt, { sub: u.id, platform: true, rol: u.rol });
       return { mfa_required: true as const, temp_token };
     }
     // Fail-closed (ADR-004/§8): sin TOTP enrolado NO se emite sesión plena. Se
     // devuelve un temp_token de alta (`mfa: 'setup'`) que solo sirve para
     // /platform/auth/mfa/setup y /platform/auth/mfa/confirm.
+    await this.auditar(u.id, {
+      accion: 'POST /api/platform/auth/login',
+      recurso: 'platformUser',
+      ip,
+      userAgent,
+      resultado: 'SUCCESS',
+      detalle: 'Credenciales válidas, alta de MFA requerida',
+    });
     const temp_token = await emitirTemporalAltaMfa(this.jwt, {
       sub: u.id,
       platform: true,
@@ -128,7 +212,12 @@ export class PlatformService {
   }
 
   /** Verifica el TOTP contra un token temporal y emite el par completo. */
-  async verificarMfa(tempToken: string, code: string, ip?: string): Promise<TokenPair> {
+  async verificarMfa(
+    tempToken: string,
+    code: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<TokenPair> {
     let payload: { sub?: string; platform?: boolean; mfa?: string } | null = null;
     try {
       payload = await this.jwt.verifyAsync(tempToken);
@@ -154,10 +243,26 @@ export class PlatformService {
     } | null;
     if (!u || !u.activo || !u.mfaEnabled || !u.mfaSecret) throw new UnauthorizedException('MFA inválido');
     if (!(await verificarTotp(u.mfaSecret, code))) {
+      await this.auditar(u.id, {
+        accion: 'POST /api/platform/auth/mfa/verify',
+        recurso: 'platformUser',
+        ip,
+        userAgent,
+        resultado: 'FAILURE',
+        detalle: 'Código MFA incorrecto',
+      });
       throw new UnauthorizedException('Código MFA incorrecto');
     }
     const access_token = await this.jwt.signAsync({ sub: u.id, platform: true, rol: u.rol, mfa: 'ok' });
     const refreshCookie = await crearRefreshToken(this.prisma, 'platform', u.id, ip);
+    await this.auditar(u.id, {
+      accion: 'POST /api/platform/auth/mfa/verify',
+      recurso: 'platformUser',
+      ip,
+      userAgent,
+      resultado: 'SUCCESS',
+      detalle: 'MFA verificado',
+    });
     return { access_token, refreshCookie };
   }
 
@@ -404,11 +509,12 @@ export class PlatformController {
   async login(
     @Body() dto: LoginDto,
     @Ip() ip: string,
+    @Headers('user-agent') userAgent: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<
     { access_token: string } | { mfa_required: true; mfa_setup_required?: boolean; temp_token: string }
   > {
-    const r = await this.service.login(dto, ip);
+    const r = await this.service.login(dto, ip, userAgent);
     if ('refreshCookie' in r && r.refreshCookie) ponerCookiePlatform(res, r.refreshCookie);
     return 'refreshCookie' in r ? { access_token: r.access_token } : r;
   }
@@ -444,9 +550,10 @@ export class PlatformController {
   async verificarMfa(
     @Body() dto: { temp_token: string; code: string },
     @Ip() ip: string,
+    @Headers('user-agent') userAgent: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ access_token: string }> {
-    const r = await this.service.verificarMfa(dto.temp_token, dto.code, ip);
+    const r = await this.service.verificarMfa(dto.temp_token, dto.code, ip, userAgent);
     ponerCookiePlatform(res, r.refreshCookie);
     return { access_token: r.access_token };
   }

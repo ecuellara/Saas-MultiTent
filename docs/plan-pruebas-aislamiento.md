@@ -199,6 +199,28 @@ npx vitest run --config vitest.config.e2e.ts --fileParallelism=false
 - `--fileParallelism=false`: las pruebas comparten base de datos y se pisan entre sí si corren en paralelo.
 - La BD de pruebas **nunca** es la de producción; el fixture borra y recrea datos.
 
+> ⚠️ **Para los tests de concurrencia usa PostgreSQL real, no PGlite.** El
+> proyecto incluye `@electric-sql/pglite-socket` (Postgres embebido, útil para el
+> resto de la suite porque no requiere Docker), pero **no soporta consultas
+> concurrentes**: un `Promise.all` de 5 consultas cierra la conexión (`P1017`) o
+> rompe el protocolo (`08P01: bind message supplies 2 parameters, but prepared
+> statement "" requires 10`) y el error se propaga como un 500 o una aserción
+> fallida que **no es del código**. Está reproducido con Prisma crudo y sin
+> código de aplicación, así que no es un defecto de los servicios.
+>
+> Receta verificada (69/69 en verde sobre `postgres:16`):
+>
+> ```bash
+> docker run -d --name dental-saas-test \
+>   -e POSTGRES_PASSWORD=test -e POSTGRES_DB=dental_saas_test \
+>   -p 5433:5432 postgres:16
+> until docker exec dental-saas-test pg_isready -U postgres | grep -q accepting; do sleep 1; done
+>
+> export DATABASE_URL="postgresql://postgres:test@127.0.0.1:5433/dental_saas_test?sslmode=disable"
+> npx prisma migrate deploy
+> npx vitest run --config vitest.config.e2e.ts
+> ```
+
 ---
 
 ## 8. Integración en CI

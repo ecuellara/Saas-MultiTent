@@ -58,7 +58,7 @@ describe('Smoke Fase 8', () => {
     db = prisma as unknown as Db;
     await limpiarDosTenants(prisma);
     await db.subscription.deleteMany({ where: { tenantId: { startsWith: 'ta-' } } });
-    await db.webhookEvent.deleteMany({ where: { eventId: { in: ['hmac-evt-1', 'mp-pay-1'] } } });
+    await db.webhookEvent.deleteMany({ where: { eventId: { in: ['hmac-evt-1', 'mp-pay-1', 'mp-pay-9'] } } });
     await db.plan.deleteMany({ where: { codigo: { in: ['consultorio', 'clinica'] } } });
     await db.platformAuditLog.deleteMany({});
     await db.platformUser.deleteMany({ where: { email: 'billing-owner@test.pe' } });
@@ -96,7 +96,7 @@ describe('Smoke Fase 8', () => {
     if (prisma) {
       await limpiarDosTenants(prisma);
       await db.subscription.deleteMany({ where: { tenantId: { startsWith: 'ta-' } } });
-      await db.webhookEvent.deleteMany({ where: { eventId: { in: ['hmac-evt-1', 'mp-pay-1'] } } });
+      await db.webhookEvent.deleteMany({ where: { eventId: { in: ['hmac-evt-1', 'mp-pay-1', 'mp-pay-9'] } } });
       await db.plan.deleteMany({ where: { codigo: { in: ['consultorio', 'clinica'] } } });
       await db.platformAuditLog.deleteMany({});
       await db.platformUser.deleteMany({ where: { email: 'billing-owner@test.pe' } });
@@ -188,6 +188,21 @@ describe('Smoke Fase 8', () => {
       .set({ 'x-signature': `ts=${ts},v1=${v1}`, 'x-request-id': rid })
       .send({ action: 'payment.approved', data: { id: 'pay-OTRO' }, metadata: { referencia: cobro.body.id } })
       .expect(401);
+
+    // Forma REAL de Mercado Pago: el id viaja en la QUERY y es lo que se firma.
+    // El `data.id` del cuerpo NO debe entrar en el manifiesto; si entrara, esta
+    // notificación legítima daría 401 y el cobro nunca se conciliaría.
+    const ts2 = Math.floor(Date.now() / 1000).toString();
+    const rid2 = 'req-456';
+    const v2 = crypto
+      .createHmac('sha256', secreto)
+      .update(`id:pay-9;request-id:${rid2};ts:${ts2}`)
+      .digest('hex');
+    await request(srv)
+      .post('/api/webhooks/mercadopago?data.id=pay-9')
+      .set({ 'x-signature': `ts=${ts2},v1=${v2}`, 'x-request-id': rid2 })
+      .send({ action: 'payment.approved', data: { id: 'pay-OTRO' }, metadata: { referencia: cobro.body.id } })
+      .expect(200);
   });
 
   it('dunning: mora, suspensión y corte del tenant', async () => {

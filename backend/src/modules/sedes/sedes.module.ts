@@ -36,6 +36,7 @@ type Db = {
     findMany: (a: unknown) => Promise<SedeRow[]>;
     findUnique: (a: unknown) => Promise<SedeRow | null>;
     create: (a: unknown) => Promise<SedeRow>;
+    count: (a: unknown) => Promise<number>;
   };
 };
 
@@ -68,22 +69,38 @@ export class SedesService {
     return s;
   }
 
+  /**
+   * El recuento de sedes y la inserción van en la MISMA transacción
+   * (`crearConLimite`), con el lock de fila del tenant tomado: N peticiones
+   * simultáneas ya no pueden pasar todas el `max_sedes` del plan.
+   */
   async crear(dto: CreateSedeDto): Promise<SedeRow> {
     const ctx = requireTenant();
-    const existentes = await this.db.sede.findMany({ where: { deletedAt: null } });
-    if (existentes.length >= 1) {
-      await this.entitlements.requireFeature(ctx.tenantId, 'multi_sede');
-    }
-    await this.entitlements.checkLimit(ctx.tenantId, 'max_sedes', existentes.length);
-    return this.db.sede.create({
-      data: {
-        tenantId: ctx.tenantId,
-        nombre: dto.nombre,
-        direccion: dto.direccion ?? null,
-        telefono: dto.telefono ?? null,
-        esPrincipal: existentes.length === 0 ? true : (dto.esPrincipal ?? false),
+    return this.entitlements.crearConLimite<SedeRow, Db>(
+      ctx.tenantId,
+      'max_sedes',
+      async (tx, ent) => {
+        const existentes = await tx.sede.count({
+          where: { tenantId: ctx.tenantId, deletedAt: null },
+        });
+        // La primera sede es libre; a partir de la segunda se exige la feature
+        // `multi_sede`. Se comprueba con los entitlements que `crearConLimite`
+        // ya resolvió: hacerlo con `requireFeature` pediría una segunda conexión
+        // del pool con el lock de la transacción ya tomado.
+        if (existentes >= 1) {
+          this.entitlements.exigirFeatureDe(ent, 'multi_sede');
+        }
+        return tx.sede.create({
+          data: {
+            tenantId: ctx.tenantId,
+            nombre: dto.nombre,
+            direccion: dto.direccion ?? null,
+            telefono: dto.telefono ?? null,
+            esPrincipal: existentes === 0 ? true : (dto.esPrincipal ?? false),
+          },
+        });
       },
-    });
+    );
   }
 }
 

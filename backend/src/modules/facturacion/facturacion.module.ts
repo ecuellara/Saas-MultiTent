@@ -247,9 +247,23 @@ export class WebhooksController {
       throw new ServiceUnavailableException('Webhook no configurado');
     }
     const headers = req.headers as Record<string, string | undefined>;
+    // El id firmado por MP viaja en la query de la notificación (`?data.id=`).
+    const q = req.query as Record<string, unknown>;
+    const idQuery =
+      typeof q['data.id'] === 'string'
+        ? q['data.id']
+        : typeof q['id'] === 'string'
+          ? q['id']
+          : undefined;
     const evento =
       proveedor === 'mercadopago'
-        ? verificarMercadoPago(secreto, headers['x-signature'], headers['x-request-id'], body)
+        ? verificarMercadoPago(
+            secreto,
+            headers['x-signature'],
+            headers['x-request-id'],
+            body,
+            idQuery,
+          )
         : verificarHmac(secreto, headers['x-signature'], body);
     if (!evento) throw new UnauthorizedException('Firma inválida');
     return this.billing.procesar(proveedor, evento, body);

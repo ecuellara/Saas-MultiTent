@@ -48,6 +48,13 @@ export function verificarHmac(
 /**
  * Mercado Pago: `x-signature: ts=<ts>,v1=<hmac>` + `x-request-id`, manifiesto
  * `id:<data.id>;request-id:<rid>;ts:<ts>` (formato oficial MP). Frescura ±15 min.
+ *
+ * IMPORTANTE: el `data.id` del manifiesto es el que MP envía en la **query** de
+ * la notificación (`?data.id=...`), no el del cuerpo. Construirlo con el del
+ * cuerpo hacía fallar la verificación de notificaciones legítimas (401) y, por
+ * tanto, que los cobros nunca se conciliaran. `dataIdQuery` tiene prioridad y
+ * solo se cae al cuerpo si no viene (compatibilidad con notificaciones viejas).
+ *
  * Body esperado: `{ id?, action, data: { id }, metadata?: { referencia? } }`.
  */
 export function verificarMercadoPago(
@@ -55,6 +62,7 @@ export function verificarMercadoPago(
   firma: string | undefined,
   requestId: string | undefined,
   body: unknown,
+  dataIdQuery?: string,
 ): EventoNormalizado | null {
   if (!firma || !requestId) return null;
   const partes = Object.fromEntries(
@@ -68,7 +76,7 @@ export function verificarMercadoPago(
   if (!ts || !v1) return null;
   if (Math.abs(Date.now() - Number(ts) * 1000) > 15 * 60 * 1000) return null;
   const b = body as { data?: { id?: string }; action?: string; metadata?: { referencia?: string } };
-  const dataId = b.data?.id;
+  const dataId = dataIdQuery ?? b.data?.id;
   if (!dataId) return null;
   const manifiesto = `id:${dataId};request-id:${requestId};ts:${ts}`;
   const esperada = crypto.createHmac('sha256', secreto).update(manifiesto).digest('hex');

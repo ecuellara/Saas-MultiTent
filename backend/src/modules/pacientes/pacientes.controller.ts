@@ -1,6 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { IsInt, IsOptional, IsString, Max } from 'class-validator';
+import type { Response } from 'express';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
 import { CreatePacienteDto, UpdatePacienteDto } from './pacientes.dto.js';
 import { PacientesService } from './pacientes.service.js';
@@ -89,8 +90,37 @@ export class PacientesController {
 
   @Get(':id/documentos/:docId/descarga')
   @RequirePermission('patients.read')
-  descarga(@Param('id') id: string, @Param('docId') docId: string): Promise<unknown> {
-    return this.service.descarga(id, docId);
+  async descarga(
+    @Param('id') id: string,
+    @Param('docId') docId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const doc = await this.service.descarga(id, docId);
+    res.setHeader('Content-Type', doc.mimeType);
+    res.setHeader('Content-Length', String(doc.buffer.length));
+    // Refuerza la mitigación de XSS almacenado: el navegador no debe re-adivinar
+    // el tipo (el contenido ya fue validado por firma en el servicio).
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', PacientesController.contentDisposition(doc.nombreArchivo));
+    // `res.end` (no `sendFile`): el buffer ya viene validado por firma desde el
+    // servicio y así no se reabre el archivo ni se expone una ruta del disco.
+    res.end(doc.buffer);
+  }
+
+  /**
+   * `Content-Disposition: attachment` seguro:
+   * - el parámetro `filename` (latin-1) se degrada a ASCII y se le quitan
+   *   comillas, barras y CR/LF (evita inyección de cabeceras);
+   * - `filename*` (RFC 5987) conserva el nombre real con acentos y espacios.
+   */
+  private static contentDisposition(nombreArchivo: string): string {
+    const ascii = nombreArchivo
+      .replace(/[\\"\r\n\u0000-\u001f\u007f]/g, '')
+      .replace(/[^\u0020-\u007e]/g, '_')
+      .trim();
+    const respaldo = ascii.length > 0 ? ascii : 'documento';
+    const extendido = encodeURIComponent(nombreArchivo.replace(/[\r\n\u0000-\u001f\u007f]/g, ''));
+    return `attachment; filename="${respaldo}"; filename*=UTF-8''${extendido}`;
   }
 
   @Get(':id/odontogramas')

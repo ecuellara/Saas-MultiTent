@@ -48,7 +48,6 @@ type Db = {
     findUnique: (a: unknown) => Promise<MembershipRow | null>;
     create: (a: unknown) => Promise<MembershipRow>;
     update: (a: unknown) => Promise<MembershipRow>;
-    count: (a: unknown) => Promise<number>;
   };
   user: { findUnique: (a: unknown) => Promise<{ id: string } | null> };
   role: { findUnique: (a: unknown) => Promise<{ tenantId: string } | null> };
@@ -83,18 +82,22 @@ export class MembershipsService {
       const sede = await this.db.sede.findUnique({ where: { id: dto.sedeId } });
       if (!sede || sede.tenantId !== ctx.tenantId) throw new NotFoundException('Sede no encontrada');
     }
-    const activos = await this.db.membership.count({
-      where: { tenantId: ctx.tenantId, estado: 'ACTIVE' },
-    });
-    await this.entitlements.checkLimit(ctx.tenantId, 'max_usuarios', activos);
-    return this.db.membership.create({
-      data: {
-        tenantId: ctx.tenantId,
-        userId: dto.userId,
-        roleId: dto.roleId,
-        sedeId: dto.sedeId ?? ctx.sedeId ?? null,
-      },
-    });
+    // El recuento de membresías ACTIVE y el alta van en la MISMA transacción
+    // (`crearConLimite`), con el lock de fila del tenant tomado: N altas
+    // simultáneas ya no pueden pasar todas el `max_usuarios` del plan.
+    return this.entitlements.crearConLimite<MembershipRow, Db>(
+      ctx.tenantId,
+      'max_usuarios',
+      (tx) =>
+        tx.membership.create({
+          data: {
+            tenantId: ctx.tenantId,
+            userId: dto.userId,
+            roleId: dto.roleId,
+            sedeId: dto.sedeId ?? ctx.sedeId ?? null,
+          },
+        }),
+    );
   }
 
   async actualizar(id: string, dto: UpdateMembershipDto): Promise<MembershipRow> {
