@@ -19,9 +19,10 @@ coverage/
 # Prisma
 prisma/migrations/**/migration.sql.lock
 
-# Subidas locales y storage de desarrollo
-uploads/
-storage/
+# Subidas locales y storage de desarrollo (anclados a raíz del backend)
+# para no excluir un eventual módulo src/ con ese nombre.
+/uploads/
+/storage/
 *.dump
 
 # IDE / SO

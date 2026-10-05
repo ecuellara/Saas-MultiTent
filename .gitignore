@@ -17,9 +17,11 @@
 *.log
 *.dump
 
-# Uploads y storage de desarrollo
-**/uploads/
-**/storage/
+# Uploads y storage de desarrollo (solo directorios de datos en raíz)
+# (anclados a raíz: un módulo llamado igual en src/ sí se versiona)
+/backend/uploads/
+/backend/storage/
+/storage/
 
 # IDE / SO
 .vscode/
