@@ -32,6 +32,7 @@ type Db = {
     findMany: (a: unknown) => Promise<PagoRow[]>;
     create: (a: unknown) => Promise<PagoRow>;
     update: (a: unknown) => Promise<PagoRow>;
+    updateMany: (a: unknown) => Promise<{ count: number }>;
   };
   paciente: { findUnique: (a: unknown) => Promise<{ tenantId: string } | null> };
   cita: { findUnique: (a: unknown) => Promise<{ tenantId: string } | null> };
@@ -161,8 +162,10 @@ export class PagosService {
       throw new BadRequestException('El abono supera el montoTotal');
     }
     const saldo = Math.round((total - nuevoPagado) * 100) / 100;
-    return this.db.pago.update({
-      where: { id },
+    // Escritura condicionada al valor leído: si otro abono concurrente ya cambió
+    // `montoPagado`, `count === 0` y se rechaza en vez de perder el abono.
+    const r = await this.db.pago.updateMany({
+      where: { id, montoPagado: pagado, estado: { not: 'anulado' } },
       data: {
         montoPagado: nuevoPagado,
         saldo,
@@ -170,15 +173,29 @@ export class PagosService {
         ...(dto.metodoPago ? { metodoPago: dto.metodoPago } : {}),
       },
     });
+    if (r.count !== 1) {
+      throw new ConflictException('El pago cambió mientras se registraba el abono; reintente');
+    }
+    return this.obtener(id);
   }
 
   /** Anulación condicional: solo pendiente/parcial con saldo pendiente. */
   async anular(id: string): Promise<PagoRow> {
     const pago = await this.obtener(id);
+    // Reglas de negocio (400): el estado no permite anular.
     if (pago.estado === 'anulado') throw new BadRequestException('Pago ya anulado');
     if (pago.estado === 'pagado') {
       throw new BadRequestException('No se puede anular un pago totalmente pagado');
     }
-    return this.db.pago.update({ where: { id }, data: { estado: 'anulado' } });
+    // Condición en el WHERE: impide resucitar un pago anulado por un abono
+    // concurrente y evita la doble anulación. Si no coincide, es carrera (409).
+    const r = await this.db.pago.updateMany({
+      where: { id, estado: { in: ['pendiente', 'parcial'] } },
+      data: { estado: 'anulado' },
+    });
+    if (r.count !== 1) {
+      throw new ConflictException('El pago cambió de estado mientras se anulaba; reintente');
+    }
+    return this.obtener(id);
   }
 }

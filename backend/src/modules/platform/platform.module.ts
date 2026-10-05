@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Ip, Param, Patch, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
+import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { BadRequestException, Injectable, Module, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { IsDateString, IsIn, IsOptional, IsString } from 'class-validator';
@@ -22,30 +23,37 @@ import {
 } from '../auth/refresh.service.js';
 
 export class UpsertSubscriptionDto {
+  @ApiProperty()
   @IsString()
   tenantId!: string;
 
+  @ApiProperty({ example: 'clinica' })
   @IsString()
   planCodigo!: string;
 
+  @ApiPropertyOptional({ enum: ['TRIAL', 'ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED', 'EXPIRED'] })
   @IsOptional()
   @IsIn(['TRIAL', 'ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED', 'EXPIRED'])
   estado?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsDateString()
   periodoInicio?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsDateString()
   periodoFin?: string;
 }
 
 export class UpdateTenantDto {
+  @ApiPropertyOptional({ enum: ['ACTIVE', 'SUSPENDED', 'CANCELLED'] })
   @IsOptional()
   @IsIn(['ACTIVE', 'SUSPENDED', 'CANCELLED'])
   estado?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   nombre?: string;
@@ -345,6 +353,7 @@ export class PlatformService {
 
 @Platform()
 @UseGuards(PlatformGuard)
+@ApiTags('platform')
 @Controller('platform')
 export class PlatformController {
   constructor(private readonly service: PlatformService) {}

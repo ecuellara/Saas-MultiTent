@@ -21,6 +21,9 @@ type Db = {
     create: (a: unknown) => Promise<{ id: string }>;
     deleteMany: (a: unknown) => Promise<unknown>;
   };
+  platformAuditLog: {
+    deleteMany: (a: unknown) => Promise<unknown>;
+  };
 };
 
 function refreshDe(r: request.Response): string {
@@ -46,6 +49,7 @@ describe('Smoke Fase 7', () => {
     db = prisma as unknown as Db;
     await limpiarDosTenants(prisma);
     await db.user.deleteMany({ where: { email: { in: ['clave@test.pe'] } } });
+    await db.platformAuditLog.deleteMany({});
     await db.platformUser.deleteMany({ where: { email: 'mfa-owner@test.pe' } });
     datos = await seedDosTenants(prisma);
     const login = await request(app.getHttpServer())
@@ -59,6 +63,7 @@ describe('Smoke Fase 7', () => {
     if (prisma) {
       await limpiarDosTenants(prisma);
       await db.user.deleteMany({ where: { email: { in: ['clave@test.pe'] } } });
+      await db.platformAuditLog.deleteMany({});
       await db.platformUser.deleteMany({ where: { email: 'mfa-owner@test.pe' } });
     }
     if (app) await app.close();

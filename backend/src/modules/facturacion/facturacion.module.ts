@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import {
   BadRequestException,
   Injectable,
@@ -19,17 +20,21 @@ import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 import { EventoNormalizado, verificarHmac, verificarMercadoPago } from './verificadores.js';
 
 export class CheckoutDto {
+  @ApiProperty()
   @IsString()
   tenantId!: string;
 
+  @ApiProperty({ example: 'clinica' })
   @IsString()
   planCodigo!: string;
 
+  @ApiPropertyOptional({ example: 30 })
   @IsOptional()
   @IsInt()
   @Min(1)
   dias?: number;
 
+  @ApiPropertyOptional({ example: 'hmac' })
   @IsOptional()
   @IsString()
   proveedor?: string;
@@ -208,6 +213,7 @@ function secretoDe(proveedor: string): string | null {
   return null;
 }
 
+@ApiTags('webhooks')
 @Controller('webhooks')
 export class WebhooksController {
   constructor(private readonly billing: BillingService) {}
@@ -239,6 +245,7 @@ export class WebhooksController {
 
 @Platform()
 @UseGuards(PlatformGuard)
+@ApiTags('platform-facturacion')
 @Controller('platform/facturacion')
 export class PlatformBillingController {
   constructor(private readonly billing: BillingService) {}
@@ -260,6 +267,7 @@ export class PlatformBillingController {
   }
 }
 
+@ApiTags('facturacion')
 @Controller('facturacion')
 export class FacturacionController {
   constructor(private readonly billing: BillingService) {}

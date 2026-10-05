@@ -1,4 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BadRequestException, Injectable, Module, NotFoundException } from '@nestjs/common';
 import { IsIn, IsObject, IsOptional, IsString } from 'class-validator';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
@@ -6,37 +8,46 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 
 export class EstadoConsentimientoDto {
+  @ApiProperty({ enum: ['borrador', 'firmado', 'revocado', 'anulado'] })
   @IsString()
   @IsIn(['borrador', 'firmado', 'revocado', 'anulado'])
   estado!: string;
 }
 
 export class CreatePlantillaDto {
+  @ApiProperty({ example: 'endodoncia' })
   @IsString()
   clave!: string;
 
+  @ApiProperty()
   @IsString()
   titulo!: string;
 
+  @ApiProperty()
   @IsString()
   cuerpo!: string;
 }
 
 export class CreateConsentimientoDto {
+  @ApiProperty()
   @IsString()
   pacienteId!: string;
 
+  @ApiProperty()
   @IsString()
   plantillaId!: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   citaId?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   tratamiento?: string;
 
+  @ApiProperty()
   @IsObject()
   datosSnapshot!: Record<string, unknown>;
 }
@@ -146,6 +157,7 @@ export class ConsentimientosService {
   }
 }
 
+@ApiTags('consentimientos')
 @Controller('consentimientos')
 export class ConsentimientosController {
   constructor(private readonly service: ConsentimientosService) {}

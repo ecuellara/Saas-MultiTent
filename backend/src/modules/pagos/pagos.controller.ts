@@ -1,8 +1,10 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
 import { AbonoDto, CreatePagoDto } from './pagos.dto.js';
 import { PagosService } from './pagos.service.js';
 
+@ApiTags('pagos')
 @Controller('pagos')
 export class PagosController {
   constructor(private readonly service: PagosService) {}

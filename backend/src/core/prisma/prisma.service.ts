@@ -24,9 +24,15 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     // extensión sin cambiar la forma de acceso (`prisma.paciente...`).
     const extended = this.$extends(tenantExtension) as unknown as Record<string, unknown>;
     for (const key of Object.keys(extended)) {
-      if (key.startsWith('$')) continue;
+      // `constructor` aparece en la enumeración del Proxy: copiarlo rompería la clase.
+      if (key === 'constructor' || key.startsWith('$')) continue;
       (this as unknown as Record<string, unknown>)[key] = extended[key];
     }
+    // `$transaction` DEBE tomarse del cliente EXTENDIDO. El del cliente base entrega
+    // un `tx` SIN la extensión, de modo que toda consulta dentro de una transacción
+    // queda sin filtro de tenant (ADR-002/ADR-003).
+    const txExtendido = extended.$transaction as (...args: unknown[]) => unknown;
+    (this as unknown as Record<string, unknown>).$transaction = txExtendido.bind(extended);
   }
 
   async onModuleInit(): Promise<void> {

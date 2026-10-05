@@ -1,4 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Injectable, Module, NotFoundException } from '@nestjs/common';
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
@@ -6,12 +8,38 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 
 export class CreateEspecialidadDto {
+  @ApiProperty({ example: 'Odontología General' })
   @IsString()
   nombre!: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   descripcion?: string;
+}
+
+/**
+ * DTO de actualización como CLASE, no `Partial<CreateEspecialidadDto>`.
+ * Un `Partial<T>`/intersección/type-literal hace que `emitDecoratorMetadata`
+ * emita `Object` como metatipo y `ValidationPipe.toValidate()` devuelva false:
+ * se saltan `whitelist` y `forbidNonWhitelisted` por completo, y un body con
+ * `{"tenantId": "<otro tenant>"}` llegaría crudo a Prisma (mass assignment).
+ */
+export class UpdateEspecialidadDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  nombre?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  descripcion?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
 }
 
 type Row = Record<string, unknown> & { id: string; tenantId: string };
@@ -49,12 +77,18 @@ export class EspecialidadesService {
     return this.db.especialidad.create({ data: { ...dto, tenantId: ctx.tenantId } });
   }
 
-  async actualizar(id: string, dto: Partial<CreateEspecialidadDto>): Promise<Row> {
+  async actualizar(id: string, dto: UpdateEspecialidadDto): Promise<Row> {
     await this.obtener(id);
-    return this.db.especialidad.update({ where: { id }, data: dto });
+    // Allowlist explícita: nunca `data: dto` (evita mass assignment de tenantId).
+    const data: { nombre?: string; descripcion?: string; activo?: boolean } = {};
+    if (dto.nombre !== undefined) data.nombre = dto.nombre;
+    if (dto.descripcion !== undefined) data.descripcion = dto.descripcion;
+    if (dto.activo !== undefined) data.activo = dto.activo;
+    return this.db.especialidad.update({ where: { id }, data });
   }
 }
 
+@ApiTags('especialidades')
 @Controller('especialidades')
 export class EspecialidadesController {
   constructor(private readonly service: EspecialidadesService) {}
@@ -77,7 +111,7 @@ export class EspecialidadesController {
 
   @Patch(':id')
   @RequirePermission('patients.write')
-  actualizar(@Param('id') id: string, @Body() dto: Partial<CreateEspecialidadDto>): Promise<unknown> {
+  actualizar(@Param('id') id: string, @Body() dto: UpdateEspecialidadDto): Promise<unknown> {
     return this.service.actualizar(id, dto);
   }
 }

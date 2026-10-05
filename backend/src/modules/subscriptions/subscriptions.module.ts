@@ -1,4 +1,5 @@
 import { Body, Controller, ForbiddenException, Get, NotFoundException, Param, Patch } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Injectable, Module } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
@@ -29,6 +30,7 @@ export class SubscriptionsService {
   }
 }
 
+@ApiTags('subscriptions')
 @Controller('subscriptions')
 export class SubscriptionsController {
   constructor(private readonly service: SubscriptionsService) {}

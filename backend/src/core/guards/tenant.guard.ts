@@ -102,6 +102,9 @@ export class TenantGuard implements CanActivate {
       roleIds: [membership.roleId],
       permissions,
       sedeId: membership.sedeId ?? undefined,
+      // Solo aquí el contexto pasa a ser de confianza: la extensión Prisma
+      // únicamente filtra con `validado === true`.
+      validado: true,
     };
     if (store) {
       Object.assign(store, poblado);

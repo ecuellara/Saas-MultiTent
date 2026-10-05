@@ -61,19 +61,19 @@ enum EstadoSuscripcion {
 }
 
 model PlatformUser {
-  id           String             @id @default(uuid())
-  email        String             @unique
-  passwordHash String
-  passwordAlgo String             @default("bcrypt")
+  id                String             @id @default(uuid())
+  email             String             @unique
+  passwordHash      String
+  passwordAlgo      String             @default("bcrypt")
   passwordChangedAt DateTime?
-  nombre       String
-  rol          String             @default("soporte") // owner | soporte | finanzas
-  mfaEnabled   Boolean            @default(false)
-  mfaSecret    String?
-  activo       Boolean            @default(true)
-  auditLogs    PlatformAuditLog[]
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  nombre            String
+  rol               String             @default("soporte") // owner | soporte | finanzas
+  mfaEnabled        Boolean            @default(false)
+  mfaSecret         String?
+  activo            Boolean            @default(true)
+  auditLogs         PlatformAuditLog[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 }
 
 model PlatformAuditLog {
@@ -94,16 +94,16 @@ model PlatformAuditLog {
 // Refresh tokens con rotación (ADR-004). Sin FK: vale para User y
 // PlatformUser (kind discrimina). Limpieza por expiración en job/batch.
 model RefreshToken {
-  id          String    @id @default(uuid())
-  kind        String // clinic | platform
-  userId      String
-  tokenHash   String    @unique
-  expiresAt   DateTime
-  revokedAt   DateTime?
+  id           String    @id @default(uuid())
+  kind         String // clinic | platform
+  userId       String
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
   replacedById String?
-  ip          String?
-  userAgent   String?
-  createdAt   DateTime  @default(now())
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime  @default(now())
 
   @@index([userId, kind])
   @@index([expiresAt])
@@ -152,12 +152,12 @@ model Tenant {
   insumos                  Insumo[]
   movimientos              MovimientoInventario[]
   compras                  Compra[]
-  compraDetalles          CompraDetalle[]
-  plantillasWhatsApp      PlantillaWhatsApp[]
-  cobros                  CobroSuscripcion[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  deletedAt   DateTime?
+  compraDetalles           CompraDetalle[]
+  plantillasWhatsApp       PlantillaWhatsApp[]
+  cobros                   CobroSuscripcion[]
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  deletedAt                DateTime?
 }
 
 model Sede {
@@ -184,21 +184,21 @@ enum UserStatus {
 }
 
 model User {
-  id           String       @id @default(uuid())
-  email        String       @unique
-  passwordHash String
-  passwordAlgo String       @default("bcrypt") // bcrypt | argon2id (migración transparente al login)
+  id                String       @id @default(uuid())
+  email             String       @unique
+  passwordHash      String
+  passwordAlgo      String       @default("bcrypt") // bcrypt | argon2id (migración transparente al login)
   passwordChangedAt DateTime?
-  nombre       String
-  cop          String? // COP del odontólogo (Fase 4: preservado de la clínica origen)
-  estado       UserStatus   @default(ACTIVE)
-  mfaEnabled   Boolean      @default(false)
-  mfaSecret    String?
-  lastLoginAt  DateTime?
-  memberships  Membership[]
-  auditorias   Auditoria[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  nombre            String
+  cop               String? // COP del odontólogo (Fase 4: preservado de la clínica origen)
+  estado            UserStatus   @default(ACTIVE)
+  mfaEnabled        Boolean      @default(false)
+  mfaSecret         String?
+  lastLoginAt       DateTime?
+  memberships       Membership[]
+  auditorias        Auditoria[]
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 }
 
 enum MemberStatus {
@@ -232,6 +232,7 @@ model Role {
   tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   memberships Membership[]
   permisos    RolePermission[]
+  deletedAt   DateTime?
 
   @@unique([tenantId, codigo])
 }

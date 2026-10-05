@@ -1,40 +1,51 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BadRequestException, Injectable, Module, NotFoundException } from '@nestjs/common';
 import { IsArray, IsDateString, IsInt, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
+import { aCentimos, desdeCentimos } from '../../core/money/money.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { SecuenciasService } from '../../core/secuencias/secuencias.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 
 export class CompraDetalleDto {
+  @ApiProperty()
   @IsString()
   insumoId!: string;
 
+  @ApiProperty({ example: 10 })
   @IsInt()
   @Min(1)
   cantidad!: number;
 
+  @ApiProperty({ example: 25 })
   @IsNumber()
   @Min(0)
   precioUnit!: number;
 }
 
 export class CreateCompraDto {
+  @ApiProperty()
   @IsString()
   proveedorId!: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   sedeId?: string;
 
+  @ApiProperty()
   @IsDateString()
   fecha!: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   observacion?: string;
 
+  @ApiProperty({ type: [CompraDetalleDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CompraDetalleDto)
@@ -87,18 +98,25 @@ export class ComprasService {
       }
     }
     const fecha = new Date(dto.fecha);
-    const montoTotal = dto.detalles.reduce((s, d) => s + d.cantidad * d.precioUnit, 0);
+    // Total = suma de subtotales, calculado en céntimos enteros (política única).
+    const subtotalesCent = dto.detalles.map((d) => aCentimos(d.cantidad * d.precioUnit));
+    const montoTotal = desdeCentimos(subtotalesCent.reduce((s, v) => s + v, 0));
     const codigo = await this.secuencias.siguienteCodigoCompra(fecha);
+    // El egreso usa el mismo correlativo REC-<año> de los ingresos. Se calcula
+    // FUERA de la transacción: contar dentro de ella consumiría otra conexión
+    // con la transacción abierta.
+    const reciboEgreso = await this.secuencias.siguienteCodigoRecibo(fecha);
 
     return this.prisma.$transaction(
       async (tx) => {
         const t = tx as unknown as {
           compra: { create: (a: unknown) => Promise<CompraRow> };
           insumo: {
-            findUniqueOrThrow: (a: unknown) => Promise<{ stockActual: number }>;
+            findFirstOrThrow: (a: unknown) => Promise<{ stockActual: number }>;
             update: (a: unknown) => Promise<unknown>;
           };
           movimientoInventario: { create: (a: unknown) => Promise<unknown> };
+          pago: { create: (a: unknown) => Promise<unknown> };
         };
         const compra = await t.compra.create({
           data: {
@@ -111,21 +129,27 @@ export class ComprasService {
             observacion: dto.observacion ?? null,
             usuarioId: ctx.userId,
             detalles: {
-              create: dto.detalles.map((d) => ({
+              create: dto.detalles.map((d, i) => ({
                 tenantId: ctx.tenantId,
                 insumoId: d.insumoId,
                 cantidad: d.cantidad,
                 precioUnit: d.precioUnit,
-                subtotal: d.cantidad * d.precioUnit,
+                subtotal: desdeCentimos(subtotalesCent[i] ?? 0),
               })),
             },
           },
         });
         for (const d of dto.detalles) {
-          const ins = await t.insumo.findUniqueOrThrow({ where: { id: d.insumoId } });
+          // Lectura acotada al tenant + incremento ATÓMICO del stock: no se
+          // pierde una entrada cuando hay compras concurrentes del mismo insumo.
+          const ins = await t.insumo.findFirstOrThrow({
+            where: { id: d.insumoId, tenantId: ctx.tenantId },
+          });
           const anterior = ins.stockActual;
-          const nuevo = anterior + d.cantidad;
-          await t.insumo.update({ where: { id: d.insumoId }, data: { stockActual: nuevo } });
+          await t.insumo.update({
+            where: { id: d.insumoId },
+            data: { stockActual: { increment: d.cantidad } },
+          });
           await t.movimientoInventario.create({
             data: {
               tenantId: ctx.tenantId,
@@ -133,7 +157,7 @@ export class ComprasService {
               tipo: 'entrada',
               cantidad: d.cantidad,
               stockAnterior: anterior,
-              stockNuevo: nuevo,
+              stockNuevo: anterior + d.cantidad,
               motivo: `compra ${codigo}`,
               referenciaTipo: 'compra',
               referenciaId: compra.id,
@@ -141,6 +165,25 @@ export class ComprasService {
             },
           });
         }
+        // El egreso en caja va en la MISMA transacción (doc §2: no perder
+        // "compra atómica que actualiza stock y genera el egreso"). Si falla,
+        // no queda stock incrementado sin gasto registrado.
+        await t.pago.create({
+          data: {
+            tenantId: ctx.tenantId,
+            codigoRecibo: reciboEgreso,
+            tipo: 'egreso',
+            concepto: `Compra ${codigo}`,
+            montoTotal,
+            montoPagado: montoTotal,
+            saldo: 0,
+            estado: 'pagado',
+            referenciaTipo: 'compra',
+            referenciaId: compra.id,
+            fecha,
+            usuarioId: ctx.userId,
+          },
+        });
         return compra;
       },
       { isolationLevel: 'Serializable' },
@@ -148,6 +191,7 @@ export class ComprasService {
   }
 }
 
+@ApiTags('compras')
 @Controller('compras')
 export class ComprasController {
   constructor(private readonly service: ComprasService) {}

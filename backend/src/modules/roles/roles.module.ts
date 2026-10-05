@@ -1,4 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import { BadRequestException, Injectable, Module, NotFoundException } from '@nestjs/common';
 import { IsArray, IsOptional, IsString } from 'class-validator';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
@@ -6,14 +8,17 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 
 export class CreateRoleDto {
+  @ApiProperty({ example: 'RECEPCION' })
   @IsString()
   codigo!: string;
 
+  @ApiProperty({ example: 'Recepción' })
   @IsString()
   nombre!: string;
 }
 
 export class SetPermisosDto {
+  @ApiProperty({ example: ['patients.read', 'appointments.write'] })
   @IsArray()
   @IsString({ each: true })
   codigos!: string[];
@@ -48,6 +53,7 @@ export class RolesService {
   listar(): Promise<RoleRow[]> {
     requireTenant();
     return this.db.role.findMany({
+      where: { deletedAt: null },
       include: { permisos: { include: { permission: true } } },
       orderBy: { codigo: 'asc' },
     } as unknown as object) as Promise<RoleRow[]>;
@@ -58,8 +64,10 @@ export class RolesService {
     const r = await this.db.role.findUnique({
       where: { id },
       include: { permisos: { include: { permission: true } } },
-    } as unknown as object) as RoleRow | null;
-    if (!r || r.tenantId !== ctx.tenantId) throw new NotFoundException('Rol no encontrado');
+    } as unknown as object) as (RoleRow & { deletedAt?: Date | null }) | null;
+    if (!r || r.tenantId !== ctx.tenantId || r.deletedAt) {
+      throw new NotFoundException('Rol no encontrado');
+    }
     return r;
   }
 
@@ -92,11 +100,13 @@ export class RolesService {
   async eliminar(id: string): Promise<{ id: string }> {
     const r = await this.obtener(id);
     if (r.esSistema) throw new BadRequestException('Los roles de sistema no se eliminan');
-    await this.db.role.delete({ where: { id } });
+    // Soft delete: el borrado físico queda fuera de la API (doc §13 N1-5).
+    await this.db.role.update({ where: { id }, data: { deletedAt: new Date() } });
     return { id };
   }
 }
 
+@ApiTags('roles')
 @Controller('roles')
 export class RolesController {
   constructor(private readonly service: RolesService) {}

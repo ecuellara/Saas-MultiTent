@@ -1,4 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import { Injectable, Module, NotFoundException } from '@nestjs/common';
 import { IsEmail, IsString } from 'class-validator';
 import { EntitlementsService } from '../../core/entitlements/entitlements.service.js';
@@ -8,18 +10,23 @@ import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 import { hashPassword, validarPassword } from '../../core/auth/passwords.js';
 
 export class CreateUsuarioDto {
+  @ApiProperty()
   @IsEmail()
   email!: string;
 
+  @ApiProperty({ minLength: 12 })
   @IsString()
   password!: string;
 
+  @ApiProperty()
   @IsString()
   nombre!: string;
 
+  @ApiProperty()
   @IsString()
   roleId!: string;
 
+  @ApiProperty()
   @IsString()
   sedeId!: string;
 }
@@ -98,6 +105,7 @@ export class UsuariosService {
   }
 }
 
+@ApiTags('usuarios')
 @Controller('usuarios')
 export class UsuariosController {
   constructor(private readonly service: UsuariosService) {}

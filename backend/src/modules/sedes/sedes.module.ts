@@ -1,4 +1,6 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Injectable, Module, NotFoundException } from '@nestjs/common';
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
 import { EntitlementsService } from '../../core/entitlements/entitlements.service.js';
@@ -7,17 +9,21 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 
 export class CreateSedeDto {
+  @ApiProperty({ example: 'Sede norte' })
   @IsString()
   nombre!: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   direccion?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   telefono?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
   esPrincipal?: boolean;
@@ -50,19 +56,21 @@ export class SedesService {
 
   listar(): Promise<SedeRow[]> {
     requireTenant();
-    return this.db.sede.findMany({ orderBy: { esPrincipal: 'desc' } });
+    return this.db.sede.findMany({ where: { deletedAt: null }, orderBy: { esPrincipal: 'desc' } });
   }
 
   async obtener(id: string): Promise<SedeRow> {
     const ctx = requireTenant();
     const s = await this.db.sede.findUnique({ where: { id } });
-    if (!s || s.tenantId !== ctx.tenantId) throw new NotFoundException('Sede no encontrada');
+    if (!s || s.tenantId !== ctx.tenantId || (s as { deletedAt?: Date | null }).deletedAt) {
+      throw new NotFoundException('Sede no encontrada');
+    }
     return s;
   }
 
   async crear(dto: CreateSedeDto): Promise<SedeRow> {
     const ctx = requireTenant();
-    const existentes = await this.db.sede.findMany({});
+    const existentes = await this.db.sede.findMany({ where: { deletedAt: null } });
     if (existentes.length >= 1) {
       await this.entitlements.requireFeature(ctx.tenantId, 'multi_sede');
     }
@@ -79,6 +87,7 @@ export class SedesService {
   }
 }
 
+@ApiTags('sedes')
 @Controller('sedes')
 export class SedesController {
   constructor(private readonly service: SedesService) {}

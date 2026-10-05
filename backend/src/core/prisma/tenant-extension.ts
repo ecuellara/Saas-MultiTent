@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { tenantContext } from '../tenant-context/tenant-context.js';
 
@@ -54,32 +55,43 @@ export const tenantExtension = Prisma.defineExtension({
     $allModels: {
       async $allOperations({ model, operation, args, query }) {
         const ctx = tenantContext.getStore();
-        if (!ctx?.tenantId || !TENANT_MODELS.has(model)) {
+        // Solo con contexto VALIDADO por TenantGuard. En rutas @Public/@Platform el
+        // store queda sin validar y la extensión no debe filtrar (el panel de
+        // plataforma necesita acceso cruzado legítimo).
+        if (!ctx?.validado || !ctx.tenantId || !TENANT_MODELS.has(model)) {
           return query(args);
         }
+        const a = args as Record<string, unknown>;
+        // Nunca sobrescribir en silencio un `tenantId` explícito distinto: si un
+        // servicio declara otro tenant es un bug (o un intento de acceso cruzado).
+        const declarado = (a.where as Record<string, unknown> | undefined)?.tenantId;
+        const declaradoData = Array.isArray(a.data)
+          ? undefined
+          : (a.data as Record<string, unknown> | undefined)?.tenantId;
+        if (
+          (declarado !== undefined && declarado !== ctx.tenantId) ||
+          (declaradoData !== undefined && declaradoData !== ctx.tenantId)
+        ) {
+          throw new ForbiddenException('tenantId declarado distinto del tenant de la sesión');
+        }
         if (READ_OPS.has(operation) || WRITE_MANY_OPS.has(operation)) {
-          (args as Record<string, unknown>).where = {
-            ...((args as Record<string, unknown>).where as object | undefined),
+          a.where = {
+            ...(a.where as object | undefined),
             tenantId: ctx.tenantId,
           };
         }
         if (operation === 'create') {
-          (args as Record<string, unknown>).data = {
-            ...((args as Record<string, unknown>).data as object | undefined),
+          a.data = {
+            ...(a.data as object | undefined),
             tenantId: ctx.tenantId,
           };
         }
         if (operation === 'createMany') {
-          const data = (args as Record<string, unknown>).data as
-            | Record<string, unknown>
-            | Array<Record<string, unknown>>;
+          const data = a.data as Record<string, unknown> | Array<Record<string, unknown>>;
           if (Array.isArray(data)) {
-            (args as Record<string, unknown>).data = data.map((d) => ({
-              ...d,
-              tenantId: ctx.tenantId,
-            }));
+            a.data = data.map((d) => ({ ...d, tenantId: ctx.tenantId }));
           } else if (data && typeof data === 'object') {
-            (args as Record<string, unknown>).data = { ...data, tenantId: ctx.tenantId };
+            a.data = { ...data, tenantId: ctx.tenantId };
           }
         }
         return query(args);

@@ -1,4 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Injectable, Module, NotFoundException } from '@nestjs/common';
 import { IsIn, IsOptional, IsString } from 'class-validator';
 import { EntitlementsService } from '../../core/entitlements/entitlements.service.js';
@@ -7,26 +9,32 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 
 export class CreateMembershipDto {
+  @ApiProperty()
   @IsString()
   userId!: string;
 
+  @ApiProperty()
   @IsString()
   roleId!: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   sedeId?: string;
 }
 
 export class UpdateMembershipDto {
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   roleId?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   sedeId?: string;
 
+  @ApiPropertyOptional({ enum: ['ACTIVE', 'INACTIVE'] })
   @IsOptional()
   @IsIn(['ACTIVE', 'INACTIVE'])
   estado?: string;
@@ -106,6 +114,7 @@ export class MembershipsService {
   }
 }
 
+@ApiTags('memberships')
 @Controller('memberships')
 export class MembershipsController {
   constructor(private readonly service: MembershipsService) {}

@@ -56,8 +56,24 @@ export class AuditInterceptor implements NestInterceptor {
     const headers = (req.headers ?? {}) as Record<string, string>;
     const db = this.prisma as unknown as {
       auditoria: { create: (a: unknown) => Promise<unknown> };
+      platformAuditLog: { create: (a: unknown) => Promise<unknown> };
     };
     const url = String((req.originalUrl ?? req.url ?? '').toString()).slice(0, 200);
+    // Rutas de plataforma → PlatformAuditLog (sin tenant); resto → Auditoria.
+    const platformUser = req.platformUser as { id: string } | undefined;
+    if (platformUser) {
+      await db.platformAuditLog.create({
+        data: {
+          platformUserId: platformUser.id,
+          accion: `${req.method} ${url}`,
+          recurso: this.tablaDe(url),
+          recursoId: this.registroDe(url) || null,
+          ip: (req.ip as string) ?? null,
+          userAgent: headers['user-agent'] ?? null,
+        },
+      });
+      return;
+    }
     await db.auditoria.create({
       data: {
         // `|| null`: el middleware crea el scope con '' antes del guard.

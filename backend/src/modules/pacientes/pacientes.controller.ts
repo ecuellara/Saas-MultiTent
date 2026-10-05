@@ -1,29 +1,36 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { IsInt, IsOptional, IsString, Max } from 'class-validator';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
 import { CreatePacienteDto, UpdatePacienteDto } from './pacientes.dto.js';
 import { PacientesService } from './pacientes.service.js';
 
 export class CreateDocumentoDto {
+  @ApiProperty({ example: 'radiografia.png' })
   @IsString()
   nombreArchivo!: string;
 
+  @ApiProperty({ example: 'RX_PERIAPICAL' })
   @IsString()
   tipo!: string;
 
+  @ApiProperty({ example: 'image/png' })
   @IsString()
   mimeType!: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsInt()
   @Max(20 * 1024)
   tamanioKb?: number;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   storageKey?: string;
 }
 
+@ApiTags('pacientes')
 @Controller('pacientes')
 export class PacientesController {
   constructor(private readonly service: PacientesService) {}

@@ -1,4 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Injectable, Module, NotFoundException } from '@nestjs/common';
 import { IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
@@ -6,21 +8,26 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 
 export class CreateTratamientoDto {
+  @ApiProperty({ example: 'Limpieza + Profilaxis' })
   @IsString()
   nombre!: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   descripcion?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   especialidadId?: string;
 
+  @ApiProperty({ example: 120 })
   @IsNumber()
   @Min(0)
   precio!: number;
 
+  @ApiPropertyOptional({ example: 45 })
   @IsOptional()
   @IsNumber()
   @Min(5)
@@ -84,6 +91,7 @@ export class TratamientosService {
   }
 }
 
+@ApiTags('tratamientos')
 @Controller('tratamientos')
 export class TratamientosController {
   constructor(private readonly service: TratamientosService) {}

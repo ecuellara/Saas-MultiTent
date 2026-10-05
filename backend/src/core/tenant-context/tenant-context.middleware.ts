@@ -18,15 +18,18 @@ import { tenantContext } from './tenant-context.js';
 @Injectable()
 export class TenantContextMiddleware implements NestMiddleware {
   use(req: Request, _res: Response, next: NextFunction): void {
-    const header = req.headers['x-tenant-id'] ?? req.headers['X-Tenant-Id'];
-    const declarado = Array.isArray(header) ? header[0] : header;
+    // La cabecera NO se copia aquí: en rutas @Public/@Platform ningún guard la
+    // valida y la extensión Prisma acabaría filtrando por un valor del cliente.
+    // TenantGuard la lee de la request, la valida y puebla el store.
+    void req;
     tenantContext.run(
       {
-        tenantId: typeof declarado === 'string' ? declarado : '',
+        tenantId: '',
         userId: '',
         roleIds: [],
         permissions: [],
         sedeId: undefined,
+        validado: false,
       },
       () => next(),
     );

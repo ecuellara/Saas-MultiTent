@@ -1,8 +1,10 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
 import { CreateCitaDto, UpdateCitaDto } from './citas.dto.js';
 import { CitasService } from './citas.service.js';
 
+@ApiTags('citas')
 @Controller('citas')
 export class CitasController {
   constructor(private readonly service: CitasService) {}

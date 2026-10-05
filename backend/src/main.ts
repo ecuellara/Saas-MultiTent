@@ -13,6 +13,19 @@ async function bootstrap(): Promise<void> {
     1,
   );
   app.setGlobalPrefix('api');
+  // CORS (doc §8.7): orígenes explícitos con trim; credentials SÍ porque el
+  // refresh viaja en cookie httpOnly (Bearer sigue siendo lo primario).
+  // SameSite=Strict cubre app/api como mismo sitio (subdominios del eTLD+1).
+  const origins = (process.env.FRONTEND_URL ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  app.enableCors({
+    origin: origins.length > 0 ? origins : false,
+    credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Id', 'X-Request-Id'],
+  });
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );

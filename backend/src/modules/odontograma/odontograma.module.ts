@@ -1,53 +1,65 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BadRequestException, Injectable, Module, NotFoundException } from '@nestjs/common';
-import { IsDateString, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsDateString, IsObject, IsOptional, IsString } from 'class-validator';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 
 export class CreateOdontogramaDto {
+  @ApiProperty()
   @IsString()
   pacienteId!: string;
 
+  @ApiPropertyOptional({ example: 'inicial' })
   @IsOptional()
   @IsString()
   tipo?: string;
 
+  @ApiProperty()
   @IsDateString()
   fecha!: string;
 
+  @ApiProperty({ example: { '16': { estado: 'caries', superficies: ['O'] } } })
   @IsObject()
   piezas!: Record<string, unknown>;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   observaciones?: string;
 }
 
 export class AddHallazgoDto {
+  @ApiProperty({ example: '16' })
   @IsString()
   pieza!: string;
 
+  @ApiProperty({ example: 'CARIES' })
   @IsString()
   hallazgoCodigo!: string;
 
+  @ApiPropertyOptional({ example: ['O'] })
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   superficies?: string[];
 
-  @IsString()
-  estadoClinico!: string;
+  // `estadoClinico` y `color` NO se aceptan del cliente: se derivan del
+  // `HallazgoCatalogo` en el servidor (requisito del documento, §6).
 
-  @IsString()
-  color!: string;
-
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   material?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   tratamientoId?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   citaId?: string;
@@ -128,15 +140,18 @@ export class OdontogramaService {
     return o;
   }
 
-  async firmar(id: string, firmadoPor: string): Promise<OdontoRow> {
+  async firmar(id: string): Promise<OdontoRow> {
+    const ctx = requireTenant();
     const o = await this.obtener(id);
     if (o.estado === 'firmado') throw new BadRequestException('Odontograma ya firmado');
     const db = this.prisma as unknown as {
       odontograma: { update: (a: unknown) => Promise<OdontoRow> };
     };
+    // El firmante es SIEMPRE el usuario de la sesión: no se acepta del body
+    // (si no, cualquiera con `patients.write` firmaría en nombre de otro).
     return db.odontograma.update({
       where: { id },
-      data: { estado: 'firmado', firmadoPor, firmadoEn: new Date() },
+      data: { estado: 'firmado', firmadoPor: ctx.userId, firmadoEn: new Date() },
     });
   }
 
@@ -146,22 +161,43 @@ export class OdontogramaService {
     if (o.estado === 'firmado') {
       throw new BadRequestException('Odontograma firmado: solo lectura');
     }
+    type Catalogo = {
+      activo: boolean;
+      colorDefecto: string;
+      requiereSuperficie: boolean;
+      requiereMaterial: boolean;
+      alcance: string;
+    };
     const db = this.prisma as unknown as {
-      hallazgoCatalogo: { findUnique: (a: unknown) => Promise<unknown | null> };
+      hallazgoCatalogo: { findUnique: (a: unknown) => Promise<Catalogo | null> };
       odontogramaHallazgo: { create: (a: unknown) => Promise<unknown> };
       odontogramaEvento: { create: (a: unknown) => Promise<unknown> };
     };
     const cat = await db.hallazgoCatalogo.findUnique({ where: { codigo: dto.hallazgoCodigo } });
-    if (!cat) throw new NotFoundException('Hallazgo no catalogado');
+    if (!cat || !cat.activo) throw new NotFoundException('Hallazgo no catalogado');
+
+    // El catálogo manda: superficies y material obligatorios se validan aquí y
+    // el color clínico se toma de `colorDefecto`, nunca del cliente.
+    const superficies = dto.superficies ?? [];
+    if (cat.requiereSuperficie && superficies.length === 0) {
+      throw new BadRequestException('Este hallazgo requiere al menos una superficie');
+    }
+    if (cat.requiereMaterial && !dto.material) {
+      throw new BadRequestException('Este hallazgo requiere material');
+    }
+    if (cat.alcance === 'pieza' && superficies.length > 0) {
+      throw new BadRequestException('Este hallazgo es de pieza completa (sin superficies)');
+    }
+
     const hallazgo = await db.odontogramaHallazgo.create({
       data: {
         tenantId: ctx.tenantId,
         odontogramaId: id,
         pieza: dto.pieza,
         hallazgoCodigo: dto.hallazgoCodigo,
-        superficies: dto.superficies ?? [],
-        estadoClinico: dto.estadoClinico,
-        color: dto.color,
+        superficies,
+        estadoClinico: 'patologico',
+        color: cat.colorDefecto,
         material: dto.material ?? null,
         tratamientoId: dto.tratamientoId ?? null,
         citaId: dto.citaId ?? null,
@@ -172,7 +208,7 @@ export class OdontogramaService {
         tenantId: ctx.tenantId,
         odontogramaId: id,
         pieza: dto.pieza,
-        estadoNuevo: dto.estadoClinico,
+        estadoNuevo: dto.hallazgoCodigo,
         tratamientoId: dto.tratamientoId ?? null,
         citaId: dto.citaId ?? null,
         observacion: `hallazgo ${dto.hallazgoCodigo}`,
@@ -182,6 +218,7 @@ export class OdontogramaService {
   }
 }
 
+@ApiTags('odontogramas')
 @Controller('odontogramas')
 export class OdontogramaController {
   constructor(private readonly service: OdontogramaService) {}
@@ -199,8 +236,8 @@ export class OdontogramaController {
 
   @Patch(':id/firmar')
   @RequirePermission('patients.write')
-  firmar(@Param('id') id: string, @Body() body: { firmadoPor: string }): Promise<unknown> {
-    return this.service.firmar(id, body.firmadoPor);
+  firmar(@Param('id') id: string): Promise<unknown> {
+    return this.service.firmar(id);
   }
 
   @Post(':id/hallazgos')

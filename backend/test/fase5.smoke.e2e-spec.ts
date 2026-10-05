@@ -28,6 +28,9 @@ type Db = {
     create: (a: unknown) => Promise<unknown>;
     deleteMany: (a: unknown) => Promise<unknown>;
   };
+  platformAuditLog: {
+    deleteMany: (a: unknown) => Promise<unknown>;
+  };
   user: { deleteMany: (a: unknown) => Promise<unknown> };
 };
 
@@ -49,6 +52,7 @@ describe('Smoke Fase 5/6', () => {
     await db.user.deleteMany({ where: { email: { in: ['recep@test.pe'] } } });
     await db.subscription.deleteMany({ where: { tenantId: { startsWith: 'ta-' } } });
     await db.plan.deleteMany({ where: { codigo: { in: ['consultorio', 'clinica'] } } });
+    await db.platformAuditLog.deleteMany({});
     await db.platformUser.deleteMany({ where: { email: 'owner@test.pe' } });
     datos = await seedDosTenants(prisma);
     const login = await request(app.getHttpServer())
@@ -64,6 +68,7 @@ describe('Smoke Fase 5/6', () => {
       await db.user.deleteMany({ where: { email: { in: ['recep@test.pe'] } } });
       await db.subscription.deleteMany({ where: { tenantId: { startsWith: 'ta-' } } });
       await db.plan.deleteMany({ where: { codigo: { in: ['consultorio', 'clinica'] } } });
+      await db.platformAuditLog.deleteMany({});
       await db.platformUser.deleteMany({ where: { email: 'owner@test.pe' } });
     }
     if (app) await app.close();

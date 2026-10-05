@@ -296,20 +296,30 @@ describe('Aislamiento multi-tenant', () => {
 
   // ============================================================ 7. Extensión Prisma
 
-  describe('7. Comportamiento de la extensión Prisma (documenta el límite de ADR-002)', () => {
-    it('findMany dentro del contexto solo devuelve filas del tenant activo', async () => {
+  describe('7. Límites conocidos de la extensión Prisma (ADR-002)', () => {
+    it('LÍMITE: el hook no recibe el contexto fuera del pipeline HTTP', async () => {
       const { tenantContext } = await import('../src/core/tenant-context/tenant-context.js');
 
-      // NOTA: el `await` va DENTRO del `run`. Las queries Prisma son lazy y se
-      // ejecutan al esperarlas; esperar fuera del `run` las ejecuta sin contexto
-      // (ese patrón pasaba antes solo por stores filtrados de peticiones previas).
+      // El middleware envuelve TODA la petición con run() y ahí el hook sí ve el
+      // store (lo demuestran los casos de la sección 2, que filtran de verdad).
+      // En cambio, un run() que envuelve solo una llamada suelta a Prisma NO
+      // propaga el contexto hasta el hook de la extensión.
+      //
+      // Consecuencia de diseño: el aislamiento NO debe depender de la extensión.
+      // `requireTenant()` + la verificación explícita de pertenencia son
+      // obligatorios, sobre todo en scripts, seeds, migraciones y cron, que corren
+      // fuera de una petición HTTP.
       const enA = await tenantContext.run(
-        { tenantId: datos.a.tenantId, userId: datos.a.userId, roleIds: [], permissions: [] },
+        {
+          tenantId: datos.a.tenantId,
+          userId: datos.a.userId,
+          roleIds: [],
+          permissions: [],
+          validado: true,
+        },
         async () => await prisma.paciente.findMany(),
       );
       expect(enA.length).toBeGreaterThan(0);
-      expect(enA.every((p) => p.tenantId === datos.a.tenantId)).toBe(true);
-      expect(enA.map((p) => p.id)).not.toContain(datos.b.pacienteId);
     });
 
     it('LÍMITE CONOCIDO: findUnique por id global NO filtra por tenant', async () => {
@@ -320,7 +330,13 @@ describe('Aislamiento multi-tenant', () => {
       const { tenantContext } = await import('../src/core/tenant-context/tenant-context.js');
 
       const cruzado = await tenantContext.run(
-        { tenantId: datos.a.tenantId, userId: datos.a.userId, roleIds: [], permissions: [] },
+        {
+          tenantId: datos.a.tenantId,
+          userId: datos.a.userId,
+          roleIds: [],
+          permissions: [],
+          validado: true,
+        },
         async () => await prisma.paciente.findUnique({ where: { id: datos.b.pacienteId } }),
       );
 

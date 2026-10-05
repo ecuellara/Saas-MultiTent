@@ -31,6 +31,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         case 'P2034':
           return this.send(res, new ConflictException('Conflicto de escritura, reintente'));
         default:
+          // Se registra el código para diagnóstico: el mensaje al cliente no lo
+          // expone (evita filtrar detalles del esquema), pero sin log es
+          // imposible distinguir un P2021 de un P2024 en producción.
+          // eslint-disable-next-line no-console
+          console.error(`[prisma:${exception.code}]`, exception.message);
           return this.send(
             res,
             new HttpException('Error de base de datos', HttpStatus.BAD_REQUEST),

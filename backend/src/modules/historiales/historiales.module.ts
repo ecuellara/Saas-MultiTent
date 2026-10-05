@@ -1,4 +1,6 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Injectable, Module, NotFoundException } from '@nestjs/common';
 import { IsDateString, IsOptional, IsString } from 'class-validator';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
@@ -6,35 +8,44 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 
 export class CreateHistorialDto {
+  @ApiProperty()
   @IsString()
   pacienteId!: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   citaId?: string;
 
+  @ApiProperty()
   @IsDateString()
   fecha!: string;
 
+  @ApiPropertyOptional({ example: '09:00' })
   @IsOptional()
   @IsString()
   hora?: string;
 
+  @ApiProperty()
   @IsString()
   motivo!: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   sintomas?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   diagnostico?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   tratamientoRealizado?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   prescripcion?: string;
@@ -91,6 +102,7 @@ export class HistorialesService {
   }
 }
 
+@ApiTags('historiales')
 @Controller('historiales')
 export class HistorialesController {
   constructor(private readonly service: HistorialesService) {}

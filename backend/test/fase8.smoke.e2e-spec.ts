@@ -27,6 +27,9 @@ type Db = {
     create: (a: unknown) => Promise<unknown>;
     deleteMany: (a: unknown) => Promise<unknown>;
   };
+  platformAuditLog: {
+    deleteMany: (a: unknown) => Promise<unknown>;
+  };
   webhookEvent: {
     deleteMany: (a: unknown) => Promise<unknown>;
   };
@@ -53,6 +56,7 @@ describe('Smoke Fase 8', () => {
     await db.subscription.deleteMany({ where: { tenantId: { startsWith: 'ta-' } } });
     await db.webhookEvent.deleteMany({ where: { eventId: { in: ['hmac-evt-1', 'mp-pay-1'] } } });
     await db.plan.deleteMany({ where: { codigo: { in: ['consultorio', 'clinica'] } } });
+    await db.platformAuditLog.deleteMany({});
     await db.platformUser.deleteMany({ where: { email: 'billing-owner@test.pe' } });
     datos = await seedDosTenants(prisma);
     const plan = await db.plan.create({
@@ -88,6 +92,7 @@ describe('Smoke Fase 8', () => {
       await db.subscription.deleteMany({ where: { tenantId: { startsWith: 'ta-' } } });
       await db.webhookEvent.deleteMany({ where: { eventId: { in: ['hmac-evt-1', 'mp-pay-1'] } } });
       await db.plan.deleteMany({ where: { codigo: { in: ['consultorio', 'clinica'] } } });
+      await db.platformAuditLog.deleteMany({});
       await db.platformUser.deleteMany({ where: { email: 'billing-owner@test.pe' } });
     }
     delete process.env.BILLING_HMAC_SECRET;

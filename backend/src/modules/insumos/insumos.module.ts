@@ -1,5 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { Module } from '@nestjs/common';
 import { IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
@@ -7,32 +9,39 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 
 export class SalidaDto {
+  @ApiProperty({ example: 5 })
   @IsInt()
   @Min(1)
   cantidad!: number;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   motivo?: string;
 }
 
 export class CreateInsumoDto {
+  @ApiProperty({ example: 'Guantes látex (caja x100)' })
   @IsString()
   nombre!: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   sedeId?: string;
 
+  @ApiPropertyOptional({ example: 'caja' })
   @IsOptional()
   @IsString()
   unidad?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsInt()
   @Min(0)
   stockMinimo?: number;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsInt()
   @Min(0)
@@ -47,6 +56,7 @@ type Db = {
     findMany: (a: unknown) => Promise<InsumoRow[]>;
     create: (a: unknown) => Promise<InsumoRow>;
     update: (a: unknown) => Promise<InsumoRow>;
+    updateMany: (a: unknown) => Promise<{ count: number }>;
   };
   sede: { findFirst: (a: unknown) => Promise<{ id: string } | null> };
   movimientoInventario: { create: (a: unknown) => Promise<unknown> };
@@ -99,10 +109,21 @@ export class InsumosService {
     const ctx = requireTenant();
     const insumo = await this.obtener(id);
     const stock = insumo.stockActual;
-    if (tipo === 'salida' && cantidad > stock) {
-      throw new BadRequestException('Stock insuficiente');
+
+    // Actualización ATÓMICA y condicionada: evita el lost-update cuando dos
+    // movimientos concurrentes tocan el mismo insumo y garantiza que el stock
+    // nunca queda negativo (el decremento solo aplica si hay existencias).
+    const r = await this.db.insumo.updateMany({
+      where: tipo === 'salida' ? { id, stockActual: { gte: cantidad } } : { id },
+      data: {
+        stockActual: { [tipo === 'salida' ? 'decrement' : 'increment']: cantidad },
+      },
+    });
+    if (r.count !== 1) {
+      throw new ConflictException('Stock insuficiente o el insumo cambió; reintente');
     }
-    const nuevo = tipo === 'salida' ? stock - cantidad : stock + cantidad;
+
+    const stockNuevo = tipo === 'salida' ? stock - cantidad : stock + cantidad;
     await this.db.movimientoInventario.create({
       data: {
         tenantId: ctx.tenantId,
@@ -110,12 +131,12 @@ export class InsumosService {
         tipo,
         cantidad,
         stockAnterior: stock,
-        stockNuevo: nuevo,
+        stockNuevo,
         motivo: motivo ?? null,
         usuarioId: ctx.userId,
       },
     });
-    return this.db.insumo.update({ where: { id }, data: { stockActual: nuevo } });
+    return this.obtener(id);
   }
 
   private async sedePrincipalId(): Promise<string | null> {
@@ -127,6 +148,7 @@ export class InsumosService {
   }
 }
 
+@ApiTags('insumos')
 @Controller('insumos')
 export class InsumosController {
   constructor(private readonly service: InsumosService) {}

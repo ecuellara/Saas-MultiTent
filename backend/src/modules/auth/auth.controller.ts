@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, Ip, Post, Req, Res } from '@nestjs/common';
+import { ApiProperty, ApiTags } from '@nestjs/swagger';
 import { IsString } from 'class-validator';
 import type { Request, Response } from 'express';
 import { Public } from '../../core/auth/public.decorator.js';
@@ -7,9 +8,11 @@ import { LoginDto } from './login.dto.js';
 import type { CookieSpec } from './refresh.service.js';
 
 export class CambiarClaveDto {
+  @ApiProperty()
   @IsString()
   actual!: string;
 
+  @ApiProperty({ minLength: 12 })
   @IsString()
   nueva!: string;
 }
@@ -24,6 +27,7 @@ function ponerCookie(res: Response, c: CookieSpec): void {
   });
 }
 
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}

@@ -1,4 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Injectable, Module, NotFoundException } from '@nestjs/common';
 import { IsEmail, IsOptional, IsString } from 'class-validator';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
@@ -6,25 +8,31 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 
 export class CreateProveedorDto {
+  @ApiProperty()
   @IsString()
   nombre!: string;
 
+  @ApiPropertyOptional({ example: '20123456789' })
   @IsOptional()
   @IsString()
   ruc?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   contacto?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   telefono?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsEmail()
   email?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   direccion?: string;
@@ -74,6 +82,7 @@ export class ProveedoresService {
   }
 }
 
+@ApiTags('proveedores')
 @Controller('proveedores')
 export class ProveedoresController {
   constructor(private readonly service: ProveedoresService) {}
