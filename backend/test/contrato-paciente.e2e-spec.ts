@@ -138,19 +138,21 @@ describe('Contrato del formulario de paciente', () => {
     expect(p.fechaNac).toBe('2015-03-09T00:00:00.000Z');
   });
 
-  it('rechaza la fecha en forma corta: por eso el frontend la convierte', async () => {
-    // `Paciente.fechaNac` es `DateTime` y Prisma NO acepta `aaaa-mm-dd`: responde
-    // «Datos inválidos», que el filtro global traduce a 400. Este caso fija el
-    // motivo por el que el formulario envía un instante completo y por el que las
-    // vistas formatean estas fechas en UTC (a medianoche UTC, formatear en hora
-    // local mostraría el día anterior en husos negativos como Lima).
+  it('acepta también la forma corta `aaaa-mm-dd` (uniforme con el resto de módulos)', async () => {
+    // Un `<input type="date">` devuelve la forma corta, y Prisma la rechaza en un
+    // campo `DateTime` («Datos inválidos» → 400). Por eso el servicio la normaliza
+    // con `new Date(...)`, igual que hacen citas, historiales, odontograma,
+    // compras, pagos y plataforma. Antes, `pacientes` era el ÚNICO que no lo hacía
+    // y este caso devolvía 400: guardar una fecha de nacimiento fallaba.
     const r = await request(app.getHttpServer())
       .post('/api/pacientes')
       .set(H)
       .send(cuerpoDelFrontend({ nombres: 'Corta', apellidos: 'Fecha', fechaNac: '2015-03-09' }));
 
-    expect(r.status, JSON.stringify(r.body)).toBe(400);
-    expect((r.body as { message: unknown }).message).toBe('Datos inválidos');
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    // `new Date('2015-03-09')` es medianoche UTC, exactamente igual que el
+    // instante completo que envía el formulario: las dos formas guardan lo mismo.
+    expect((r.body as { fechaNac: string }).fechaNac).toBe('2015-03-09T00:00:00.000Z');
   });
 
   it('el PATCH acepta el mismo cuerpo completo', async () => {

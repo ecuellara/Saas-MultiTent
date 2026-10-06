@@ -8,13 +8,8 @@ import PacienteFormModal from '../../components/pacientes/PacienteFormModal.vue'
 import AvisoError from '../../components/ui/AvisoError.vue'
 import CargandoBloque from '../../components/ui/CargandoBloque.vue'
 import { mensajeDeError } from '../../services/errores'
-import {
-  calcularEdad,
-  formatearFecha,
-  formatearFechaUTC,
-  obtenerPaciente,
-  type Paciente,
-} from '../../services/pacientes'
+import { calcularEdad, formatearFecha, formatearFechaUTC } from '../../services/fechas'
+import { obtenerPaciente, type Paciente } from '../../services/pacientes'
 import { useSessionStore } from '../../stores/session'
 
 const route = useRoute()

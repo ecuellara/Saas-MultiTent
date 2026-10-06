@@ -64,10 +64,27 @@ export class MembershipsService {
     return this.prisma as unknown as Db;
   }
 
+  /**
+   * Lista el equipo de la clínica.
+   *
+   * `include: { user: true }` traía la fila **completa** de `User`: con eso
+   * `passwordHash`, `passwordAlgo` y `mfaSecret` viajaban al cliente. Un
+   * `select` explícito deja fuera todo lo que la interfaz no necesita.
+   */
   listar(): Promise<MembershipRow[]> {
     requireTenant();
     return this.db.membership.findMany({
-      include: { user: true, role: true },
+      select: {
+        id: true,
+        tenantId: true,
+        userId: true,
+        roleId: true,
+        sedeId: true,
+        estado: true,
+        joinedAt: true,
+        user: { select: { id: true, email: true, nombre: true } },
+        role: { select: { id: true, codigo: true, nombre: true } },
+      },
       orderBy: { joinedAt: 'asc' },
     } as unknown as object) as Promise<MembershipRow[]>;
   }

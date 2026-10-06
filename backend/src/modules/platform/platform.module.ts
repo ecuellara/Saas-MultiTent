@@ -2,7 +2,7 @@ import { Body, Controller, Get, Headers, HttpCode, Ip, Param, Patch, Post, Put, 
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { BadRequestException, Injectable, Module, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { IsDateString, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 import type { Request, Response } from 'express';
 import { generarCodigoTotp, generarSecretoTotp, urlOtpauth, verificarTotp } from '../../core/auth/totp.js';
 import { Platform } from '../../core/auth/platform.decorator.js';
@@ -28,6 +28,53 @@ import {
   revocarRefresh,
   rotarRefresh,
 } from '../auth/refresh.service.js';
+
+/**
+ * DTO de los endpoints de MFA y de clave del panel de plataforma.
+ *
+ * Antes estos cuerpos se declaraban como **tipo literal** (`@Body() dto: { code: string }`),
+ * y con eso el `ValidationPipe` global **no valida nada**: el metatipo que emite
+ * TypeScript para un objeto literal es `Object`, y el pipe solo valida cuando el
+ * metatipo es una clase con decoradores. Consecuencia real comprobada:
+ * `POST /platform/auth/mfa/verify` —que es `@Public()`— con `code: 123456`
+ * (número) o sin `code` llegaba hasta `verificarTotp`, que hace
+ * `code.replace(...)`, y devolvía un **500** en lugar de un 400.
+ */
+export class MfaVerifyDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  temp_token!: string;
+
+  @ApiProperty({ example: '123456' })
+  @Matches(/^\d{6}$/, { message: 'code debe ser de 6 dígitos' })
+  code!: string;
+}
+
+export class MfaCodeDto {
+  @ApiProperty({ example: '123456' })
+  @Matches(/^\d{6}$/, { message: 'code debe ser de 6 dígitos' })
+  code!: string;
+}
+
+export class MfaDisableDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  password!: string;
+}
+
+export class CambiarClavePlatformDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  actual!: string;
+
+  @ApiProperty({ minLength: 12 })
+  @IsString()
+  @IsNotEmpty()
+  nueva!: string;
+}
 
 export class UpsertSubscriptionDto {
   @ApiProperty()
@@ -548,7 +595,7 @@ export class PlatformController {
   @Post('auth/mfa/verify')
   @HttpCode(200)
   async verificarMfa(
-    @Body() dto: { temp_token: string; code: string },
+    @Body() dto: MfaVerifyDto,
     @Ip() ip: string,
     @Headers('user-agent') userAgent: string,
     @Res({ passthrough: true }) res: Response,
@@ -573,7 +620,7 @@ export class PlatformController {
   @HttpCode(200)
   confirmarMfa(
     @Req() req: Request & { platformUser?: { id: string } },
-    @Body() dto: { code: string },
+    @Body() dto: MfaCodeDto,
   ): Promise<{ mfaEnabled: true }> {
     return this.service.confirmarMfa(req.platformUser!.id, dto.code);
   }
@@ -582,7 +629,7 @@ export class PlatformController {
   @HttpCode(200)
   deshabilitarMfa(
     @Req() req: Request & { platformUser?: { id: string } },
-    @Body() dto: { password: string },
+    @Body() dto: MfaDisableDto,
   ): Promise<{ mfaEnabled: false }> {
     return this.service.deshabilitarMfa(req.platformUser!.id, dto.password);
   }
@@ -591,7 +638,7 @@ export class PlatformController {
   @HttpCode(200)
   cambiarClave(
     @Req() req: Request & { platformUser?: { id: string } },
-    @Body() dto: { actual: string; nueva: string },
+    @Body() dto: CambiarClavePlatformDto,
   ): Promise<{ ok: true }> {
     return this.service.cambiarClavePropia(req.platformUser!.id, dto.actual, dto.nueva);
   }

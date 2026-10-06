@@ -7,10 +7,9 @@ import CargandoBloque from '../../components/ui/CargandoBloque.vue'
 import EstadoVacio from '../../components/ui/EstadoVacio.vue'
 import ModalConfirmar from '../../components/ui/ModalConfirmar.vue'
 import { mensajeDeError } from '../../services/errores'
+import { calcularEdad, formatearFecha } from '../../services/fechas'
 import {
-  calcularEdad,
   eliminarPaciente,
-  formatearFecha,
   listarPacientes,
   type Paciente,
 } from '../../services/pacientes'

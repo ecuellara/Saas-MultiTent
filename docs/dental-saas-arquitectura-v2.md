@@ -252,29 +252,35 @@ hermano de `backend/`. **Estado actual — cimientos construidos y verificados:*
 
 ```text
 frontend/src/
-├── services/
+├── services/                   # capa de dominio: las vistas NO llaman a `api.*`
 │   ├── api.ts                  # axios: Bearer + X-Tenant-Id; 401 → evento (sin recarga)
-│   └── errores.ts              # mensajeDeError / esNoEncontrado / esProhibido / esConflicto
+│   ├── errores.ts              # mensajeDeError / esNoEncontrado / esProhibido / esConflicto
+│   ├── fechas.ts               # formatearFecha vs formatearFechaUTC, deInputFecha, sumarDias…
+│   ├── pacientes.ts            # expediente y documentos (subida y descarga)
+│   ├── citas.ts                # agenda, estados y sus etiquetas
+│   └── catalogos.ts            # tratamientos, sedes y equipo
 ├── stores/
 │   ├── session.ts              # usuario + clínicas + activa (rol, permisos, features)
 │   └── theme.ts                # claro/oscuro (la clase se aplica antes de pintar)
-├── components/layout/
-│   ├── navigation.ts           # menú con permiso/feature por item (fuente única)
-│   └── AppSidebar.vue          # filtra el menú y permite cambiar de clínica
+├── components/
+│   ├── ui/                     # ModalBase, ModalConfirmar, SelectorEntidad, AvisoError, …
+│   ├── layout/                 # navigation.ts (fuente única del menú) + AppSidebar
+│   ├── pacientes/              # formulario, documentos, historial, odontogramas
+│   └── citas/CitaFormModal.vue
 ├── layouts/AppLayout.vue       # cabecera + menú (superpuesto en móvil)
 ├── router/index.ts             # guard: token → sesión → clínica → permiso
 └── views/
-    ├── auth/LoginView.vue
-    ├── auth/SeleccionClinicaView.vue   # selector (solo si hay más de una clínica)
-    ├── DashboardView.vue               # comprobación del enlazado multi-clínica
-    └── EnConstruccionView.vue          # relleno de los módulos pendientes
+    ├── auth/                   # LoginView, SeleccionClinicaView
+    ├── pacientes/              # PacientesView, PacienteDetalleView
+    ├── agenda/AgendaView.vue   # vista del día con acciones de estado
+    ├── DashboardView.vue       # comprobación del enlazado multi-clínica
+    └── EnConstruccionView.vue  # relleno de los módulos pendientes
 ```
 
-**Pendiente:** las vistas de cada módulo (pacientes, agenda, odontograma,
-consentimientos, pagos, inventario, compras, usuarios, sedes, configuración) y el
-`AdminLayout` del panel de plataforma. Las rutas ya están declaradas con su
-`meta.permiso`, así que sustituir `EnConstruccionView` por la vista real no obliga a
-tocar el enrutado ni el menú.
+**Pendiente:** odontograma (editor gráfico), consentimientos, pagos, inventario,
+compras, usuarios, sedes y el `AdminLayout` del panel de plataforma. Las rutas ya
+están declaradas con su `meta.permiso`, así que sustituir `EnConstruccionView` por la
+vista real no obliga a tocar el enrutado ni el menú.
 
 **Regla de oro:** el frontend **oculta** lo no permitido; el backend **rechaza** lo no permitido.
 
@@ -316,27 +322,76 @@ en una ruta `@Public`). Si hay cabecera, el camino es el de siempre.
 
 ### Convención de fechas (afecta a todo formulario)
 
-Un campo `DateTime` de Prisma **rechaza** la forma corta `aaaa-mm-dd`: el motor
-responde «Datos inválidos», que el filtro global traduce a **400**. Como
-`<input type="date">` devuelve exactamente esa forma, la conversión es obligatoria:
+Un campo `DateTime`/`@db.Date` de Prisma **rechaza** la forma corta `aaaa-mm-dd`
+—justo la que devuelve `<input type="date">`— con «Datos inválidos», que el filtro
+global traduce a **400**. La regla es que **el servicio normaliza la fecha en el
+borde**, como ya hacían citas, historiales, odontograma, compras, pagos y
+plataforma con `new Date(dto.fecha)`:
 
 ```text
-input (aaaa-mm-dd)  →  `${valor}T00:00:00.000Z`  →  Prisma           (al enviar)
-Prisma (ISO UTC)    →  toLocaleDateString(..., { timeZone: 'UTC' })  (al mostrar)
+DTO: "2026-03-10"  →  new Date(...)  →  Prisma        (en el servicio)
+Prisma: ISO UTC    →  timeZone: 'UTC'                 (al mostrar una fecha sin hora)
 ```
 
-Las dos mitades son necesarias. Si se guarda medianoche UTC y se formatea en hora
-local, en cualquier huso negativo (Lima es UTC-5) la fecha se muestra **un día
-antes**: el 09/03 aparece como 08/03. Regla práctica:
+`pacientes` era el **único** módulo que pasaba la cadena directamente a Prisma, de
+modo que guardar una fecha de nacimiento fallaba aunque el DTO la aceptara. Ya está
+corregido: la API es uniforme y el cliente puede enviar la forma corta o el
+instante completo.
 
-- **Fecha sin hora** (fecha de nacimiento, `HistorialClinico.fecha`, cuota):
-  se envía con el sufijo `T00:00:00.000Z` y se formatea con `timeZone: 'UTC'`.
-- **Instante real** (`createdAt`, `firmadoEn`): se formatea en la hora del usuario.
+Al **mostrar** hay una segunda mitad que no es opcional: las columnas sin hora se
+guardan como medianoche UTC, así que formatearlas en hora local las adelanta un día
+en husos negativos (Lima es UTC-5): el 09/03 aparecería como 08/03.
 
-Este defecto no lo detecta el compilador y no aparece en los e2e que montan la app
-sin el pipe global, por eso hay un spec de contrato
-(`backend/test/contrato-paciente.e2e-spec.ts`) que envía el cuerpo tal como lo
-construye el frontend y fija ambos comportamientos.
+- **Fecha sin hora** (nacimiento, `HistorialClinico.fecha`, vencimiento de cuota):
+  `formatearFechaUTC` (`timeZone: 'UTC'`).
+- **Instante real** (`createdAt`, `firmadoEn`): `formatearFecha`, en hora local.
+
+Nada de esto lo detecta el compilador, y tampoco aparece en los e2e que montan la app
+sin el `ValidationPipe` global. Por eso hay specs de **contrato**
+(`contrato-paciente`, `contrato-modulos`, `contrato-inventario-clinico`) que envían
+los cuerpos tal como los construye el cliente y fijan las dos mitades.
+
+### Trampa: un cuerpo declarado como objeto literal no se valida
+
+```typescript
+@Body() dto: { code: string }   // ❌ el ValidationPipe NO valida nada
+@Body() dto: MfaCodeDto         // ✅ valida (el metatipo es una clase)
+```
+
+El `ValidationPipe` solo valida cuando el metatipo del parámetro es una **clase con
+decoradores**. Para un objeto literal, TypeScript emite `Object` y el pipe lo salta
+en silencio: el `whitelist` no se aplica, los campos que faltan llegan como
+`undefined` y los tipos equivocados pasan tal cual. Ha mordido ya dos veces:
+
+- `Partial<Dto>` en un controlador → el whitelist no filtraba nada.
+- Los cuerpos de MFA del panel: `POST /platform/auth/mfa/verify` (que es `@Public()`)
+  con `code: 123456` llegaba a `verificarTotp`, que hace `code.replace(...)` →
+  **500** en lugar de 400. Corregido con DTO reales, y `verificarTotp` además
+  rechaza lo que no sea cadena.
+
+Quedan **dos** cuerpos crudos y son deliberados: el webhook de pagos (su validez la
+da la **firma**, no el esquema) y un parámetro sin usar en `subscriptions`.
+
+> Nota de orden de ejecución: los **guards corren antes que los pipes**. Un endpoint
+> protegido con un cuerpo inválido devuelve 401/403, no 400, así que la validación
+> de un DTO solo se puede probar en rutas alcanzables (`@Public` o con credenciales
+> válidas).
+
+### Trampa: `include: true` sobre un modelo con columnas sensibles
+
+```typescript
+include: { user: true }        // ❌ devuelve passwordHash, passwordAlgo, mfaSecret
+select: { user: { select: { id: true, email: true, nombre: true } } }   // ✅
+```
+
+`include: true` trae la fila **completa** del modelo relacionado. Ocurrió en
+`GET /memberships`: el equipo de la clínica se servía con `include: { user: true }`,
+así que el hash de la contraseña y el secreto TOTP de cada miembro viajaban al
+cliente. Ya está corregido con un `select` explícito.
+
+Regla: **toda respuesta que atraviese una relación usa `select`**, aunque hoy
+parezca que no hay nada sensible. Vale igual para `User` (credenciales),
+`Tenant` (configuración) y `GoogleAccount` (tokens cifrados).
 
 ---
 

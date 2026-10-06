@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { mensajeDeError } from '../../services/errores'
-import {
-  formatearFechaUTC,
-  listarHistoriales,
-  type HistorialClinico,
-} from '../../services/pacientes'
+import { formatearFechaUTC } from '../../services/fechas'
+import { listarHistoriales, type HistorialClinico } from '../../services/pacientes'
 import AvisoError from '../ui/AvisoError.vue'
 import CargandoBloque from '../ui/CargandoBloque.vue'
 import EstadoVacio from '../ui/EstadoVacio.vue'

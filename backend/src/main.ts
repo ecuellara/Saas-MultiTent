@@ -1,5 +1,14 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+
+// Carga `.env` si existe, sin añadir dependencia (Node ≥ 20.12 trae
+// `process.loadEnvFile`). En producción las variables vienen del entorno y esta
+// llamada no hace nada. Se accede por cast para no depender de los tipos de Node.
+try {
+  (process as unknown as { loadEnvFile?: () => void }).loadEnvFile?.();
+} catch {
+  // No hay `.env`: se usan las variables del entorno tal cual.
+}
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';

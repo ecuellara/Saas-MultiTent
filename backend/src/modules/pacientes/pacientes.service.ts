@@ -90,18 +90,39 @@ export class PacientesService {
     return p;
   }
 
+  /**
+   * Normaliza las fechas del DTO a `Date` antes de tocar Prisma.
+   *
+   * Motivo: un campo `DateTime` de Prisma **rechaza** la forma corta
+   * `aaaa-mm-dd` —la que devuelve un `<input type="date">`— con «Datos
+   * inválidos» (400). El resto de módulos ya lo resuelve con
+   * `new Date(dto.fecha)`: citas, historiales, odontograma, compras, pagos y
+   * plataforma. Pacientes era el ÚNICO que pasaba la cadena tal cual, así que
+   * guardar una fecha de nacimiento fallaba aunque el DTO la aceptara.
+   *
+   * Se normaliza aquí, en el borde, para que la API sea uniforme: el cliente
+   * puede enviar la forma corta o el instante completo.
+   */
+  private normalizarFechas(dto: Record<string, unknown>): Record<string, unknown> {
+    const salida: Record<string, unknown> = { ...dto };
+    if (typeof salida.fechaNac === 'string' && salida.fechaNac.length > 0) {
+      salida.fechaNac = new Date(salida.fechaNac);
+    }
+    return salida;
+  }
+
   async crear(dto: Record<string, unknown>): Promise<Record<string, unknown>> {
     const ctx = requireTenant();
     const { tenantId: _ignored, ...resto } = dto;
     return this.db.paciente.create({
-      data: { ...resto, tenantId: ctx.tenantId },
+      data: { ...this.normalizarFechas(resto), tenantId: ctx.tenantId },
     });
   }
 
   async actualizar(id: string, dto: Record<string, unknown>): Promise<Record<string, unknown>> {
     await this.obtener(id);
     const { tenantId: _ignored, ...resto } = dto;
-    return this.db.paciente.update({ where: { id }, data: resto });
+    return this.db.paciente.update({ where: { id }, data: this.normalizarFechas(resto) });
   }
 
   async eliminar(id: string): Promise<{ id: string }> {

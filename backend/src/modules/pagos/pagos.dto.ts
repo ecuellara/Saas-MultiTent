@@ -33,6 +33,31 @@ export class PagoDetalleDto {
   precioUnit!: number;
 }
 
+/**
+ * Cuota del plan de pagos.
+ *
+ * Antes `cuotas` se declaraba como `Array<{...}>` sin validadores: el
+ * `@IsOptional()` mantenía la propiedad en el whitelist pero **no comprobaba
+ * nada de su contenido**, así que un cliente podía enviar `monto: 'mucho'` o
+ * `fechaVencimiento: false` y el servicio los pasaba a Prisma tal cual. Con
+ * `ValidateNested` cada cuota se valida de verdad.
+ */
+export class CuotaDto {
+  @ApiProperty({ example: 1 })
+  @IsInt()
+  @Min(1)
+  nroCuota!: number;
+
+  @ApiProperty({ example: 60 })
+  @IsNumber()
+  @Min(0.01)
+  monto!: number;
+
+  @ApiProperty({ example: '2026-04-10' })
+  @IsDateString()
+  fechaVencimiento!: string;
+}
+
 export class CreatePagoDto {
   @ApiProperty({ example: 'Limpieza dental' })
   @IsString()
@@ -85,9 +110,12 @@ export class CreatePagoDto {
   @Type(() => PagoDetalleDto)
   detalles?: PagoDetalleDto[];
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: [CuotaDto] })
   @IsOptional()
-  cuotas?: Array<{ nroCuota: number; monto: number; fechaVencimiento: string }>;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CuotaDto)
+  cuotas?: CuotaDto[];
 }
 
 export class AbonoDto {

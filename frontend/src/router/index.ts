@@ -47,8 +47,7 @@ const router = createRouter({
         {
           path: 'agenda',
           name: 'agenda',
-          component: EnConstruccion,
-          props: { titulo: 'Agenda', descripcion: 'Calendario de citas y recordatorios.' },
+          component: () => import('../views/agenda/AgendaView.vue'),
           meta: { permiso: 'appointments.read' },
         },
         {

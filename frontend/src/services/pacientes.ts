@@ -192,71 +192,7 @@ export async function descargarDocumento(
   }
 }
 
-/** Formatea un INSTANTE ISO a `dd/mm/aaaa` en la hora del usuario. */
-export function formatearFecha(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-}
-
-/**
- * Formatea una FECHA SIN HORA (fecha de nacimiento, fecha clínica) en UTC.
- *
- * Estas columnas se guardan como un instante a medianoche UTC. Formatearlas en
- * hora local las mostraría **un día antes** en cualquier huso negativo (Lima es
- * UTC-5): el 09/03 guardado aparecería como 08/03.
- */
-export function formatearFechaUTC(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('es-PE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    timeZone: 'UTC',
-  })
-}
-
-/**
- * `aaaa-mm-dd` de un `<input type="date">` → instante ISO que Prisma acepta.
- *
- * Prisma **rechaza** la forma corta `2015-03-09` en un campo `DateTime` (responde
- * «Datos inválidos»), así que la conversión no es opcional. Se fija medianoche
- * UTC para que el día no se desplace, y se lee siempre con `formatearFechaUTC`.
- */
-export function deInputFecha(valor: string): string | null {
-  if (!valor) return null
-  return `${valor}T00:00:00.000Z`
-}
-
-/**
- * Edad en años cumplidos, o `null` si no hay fecha de nacimiento válida.
- * El día de nacimiento se lee en UTC (como se guardó) y «hoy» es el día local.
- */
-export function calcularEdad(fechaNac: string | null): number | null {
-  if (!fechaNac) return null
-  const nace = new Date(fechaNac)
-  if (Number.isNaN(nace.getTime())) return null
-  const hoy = new Date()
-  let edad = hoy.getFullYear() - nace.getUTCFullYear()
-  const m = hoy.getMonth() - nace.getUTCMonth()
-  if (m < 0 || (m === 0 && hoy.getDate() < nace.getUTCDate())) edad--
-  return edad >= 0 ? edad : null
-}
-
 /** `true` si el documento es una imagen que se puede previsualizar. */
 export function esImagen(mimeType: string): boolean {
   return mimeType === 'image/png' || mimeType === 'image/jpeg'
-}
-
-/** Instante ISO → `aaaa-mm-dd` para un `<input type="date">` (en UTC). */
-export function paraInputFecha(iso: string | null): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  const mes = String(d.getUTCMonth() + 1).padStart(2, '0')
-  const dia = String(d.getUTCDate()).padStart(2, '0')
-  return `${d.getUTCFullYear()}-${mes}-${dia}`
 }

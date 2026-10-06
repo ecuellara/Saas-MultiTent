@@ -10,6 +10,10 @@ export function urlOtpauth(email: string, secret: string): string {
 }
 
 export async function verificarTotp(secret: string, code: string): Promise<boolean> {
+  // Defensa en profundidad: si un llamador pasa algo que no es una cadena (por
+  // ejemplo un número desde un cuerpo JSON sin validar), `code.replace` lanzaría
+  // y el endpoint respondería 500 en vez de rechazar el intento.
+  if (typeof code !== 'string' || code.length === 0) return false;
   const r = await verify({ secret, token: code.replace(/\s/g, '') });
   return r.valid === true;
 }

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { mensajeDeError } from '../../services/errores'
+import { formatearFecha } from '../../services/fechas'
 import {
   TIPOS_DOCUMENTO,
   descargarDocumento,
   etiquetaTipoDocumento,
-  formatearFecha,
   listarDocumentos,
   subirDocumento,
   type DocumentoPaciente,

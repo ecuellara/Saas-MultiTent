@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { mensajeDeError } from '../../services/errores'
+import { deInputFecha, paraInputFecha } from '../../services/fechas'
 import {
   actualizarPaciente,
   crearPaciente,
-  deInputFecha,
-  paraInputFecha,
   type Paciente,
   type PacienteEntrada,
 } from '../../services/pacientes'
