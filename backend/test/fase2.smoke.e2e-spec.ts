@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { PASSWORD_PLAIN, limpiarDosTenants, seedDosTenants, type DosTenants } from './helpers/tenants-fixture.js';
+import { fechaFutura } from './helpers/fechas.js';
 
 describe('Smoke Fase 2/3', () => {
   let app: INestApplication;
@@ -53,11 +54,17 @@ describe('Smoke Fase 2/3', () => {
   });
 
   it('citas: solapa 400, libre 201', async () => {
+    // La cita de referencia se crea aquí (antes se usaba la del fixture, con fecha
+    // fija de marzo de 2026, que ya es pasado: agendar en el pasado se rechaza).
+    const dia = fechaFutura(30);
     await request(app.getHttpServer()).post('/api/citas').set(H).send({
-      pacienteId: datos.a.pacienteId, fecha: '2026-03-10', horaInicio: '09:15', horaFin: '09:45',
+      pacienteId: datos.a.pacienteId, fecha: dia, horaInicio: '09:00', horaFin: '09:30',
+    }).expect(201);
+    await request(app.getHttpServer()).post('/api/citas').set(H).send({
+      pacienteId: datos.a.pacienteId, fecha: dia, horaInicio: '09:15', horaFin: '09:45',
     }).expect(400);
     await request(app.getHttpServer()).post('/api/citas').set(H).send({
-      pacienteId: datos.a.pacienteId, fecha: '2026-03-10', horaInicio: '10:00', horaFin: '10:30',
+      pacienteId: datos.a.pacienteId, fecha: dia, horaInicio: '10:00', horaFin: '10:30',
     }).expect(201);
   });
 

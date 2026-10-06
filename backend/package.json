@@ -14,6 +14,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed-demo": "tsx prisma/seed-demo.ts",
     "db:migrar-clinica": "tsx scripts/migrar-clinica.ts",
+    "smoke:arranque": "npm run build && node scripts/smoke-arranque.mjs",
     "test:aislamiento": "vitest run --config vitest.config.e2e.ts --fileParallelism=false"
   },
   "dependencies": {

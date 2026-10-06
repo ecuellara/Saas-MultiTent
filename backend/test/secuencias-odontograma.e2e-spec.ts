@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { PASSWORD_PLAIN, limpiarDosTenants, seedDosTenants, type DosTenants } from './helpers/tenants-fixture.js';
+import { fechaFutura } from './helpers/fechas.js';
 
 type Evento = { id: string; pieza: string; estadoAnterior: string | null; estadoNuevo: string };
 type Hallazgo = { id: string; activo: boolean; tenantId: string };
@@ -80,7 +81,9 @@ describe('Secuencias por tenant y trazabilidad del odontograma', () => {
         .set(H)
         .send({
           pacienteId: datos.a.pacienteId,
-          fecha: '2026-06-15',
+          // Fecha futura calculada: agendar en el pasado se rechaza, así que una
+          // fecha fija haría caducar la prueba.
+          fecha: fechaFutura(45),
           horaInicio: `${String(8 + i).padStart(2, '0')}:00`,
           horaFin: `${String(8 + i).padStart(2, '0')}:30`,
         })

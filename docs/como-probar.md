@@ -115,8 +115,15 @@ selecciona sola y va al panel. Con más de una clínica aparece el selector.
     a renombrar un `.txt` a `.png`: se rechaza, porque el servidor mira el
     **contenido** y no la extensión.
 - **Agenda**: vista del día con dos citas de ejemplo. Crea una cita (al elegir
-  tratamiento se calcula sola la hora de fin) y prueba a **solapar** otra en la
-  misma franja: el backend la rechaza con un mensaje claro.
+  tratamiento se calcula sola la hora de fin).
+  La clínica demo trae horario configurado —lunes a viernes 09:00-19:00, sábado
+  09:00-13:00, domingo cerrado— así que puedes ver las reglas en acción:
+  - un **domingo** → «El consultorio no atiende el día dom»;
+  - un **sábado a las 15:00** → «La cita está fuera del horario de atención (sab 09:00-13:00)»;
+  - una **hora de hoy que ya pasó** → «No se puede agendar en el pasado: la franja … ya pasó»;
+  - **solapar** con una cita existente → «La cita se solapa con otra existente».
+
+  Las cuatro las valida el backend; el formulario, además, no ofrece días anteriores a hoy.
 
 ## 6. Panel de plataforma
 

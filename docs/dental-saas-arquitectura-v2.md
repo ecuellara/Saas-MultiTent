@@ -351,6 +351,32 @@ sin el `ValidationPipe` global. Por eso hay specs de **contrato**
 (`contrato-paciente`, `contrato-modulos`, `contrato-inventario-clinico`) que envían
 los cuerpos tal como los construye el cliente y fijan las dos mitades.
 
+> **Simétrico: al mostrar y al CALCULAR.** Formatear en UTC no basta; cualquier
+> **cálculo** sobre una columna `@db.Date` —el día de la semana, comparar con un
+> rango de descansos— debe leerla también en UTC. `CitasService` usaba `getDay()`
+> local, y como el valor es medianoche UTC, en Lima el 05/10/2026 (lunes) se leía
+> como **domingo**: el horario se validaba contra el día anterior, de modo que **un
+> domingo se aceptaba** (validado como sábado) y un lunes se rechazaba. El spec
+> `citas-horario` lo fija, y la suite fuerza `TZ=America/Lima` porque CI corre en UTC
+> y ahí el desplazamiento no existe: el fallo habría pasado desapercibido.
+
+### Regla de agenda: no se agenda en el pasado
+
+`CitasService` rechaza crear o **mover** una cita a una franja que ya pasó. La cita
+se sitúa en una fecha civil + una hora local del consultorio, así que el instante se
+reconstruye con las partes UTC de la fecha (columnas `@db.Date`) y la hora indicada.
+
+- Se valida en `crear` y al **mover** (si cambia fecha u hora).
+- **No** se valida al cambiar solo el estado o la observación: marcar como realizada
+  una cita de ayer debe seguir funcionando.
+- El mensaje nombra la franja (`... la franja 2026-10-05 11:00 ya pasó`) para que no
+  haya que deducir a qué se refiere.
+
+Orden de las validaciones en `crear`: rango → **pasado** → paciente/tratamiento/sede
+→ horario y descansos → solapamiento. Lo primero que se comprueba es lo que el
+usuario necesita leer: antes, intentar agendar para una hora ya pasada devolvía «El
+consultorio no atiende el día dom» y ocultaba el motivo real.
+
 ### Trampa: un cuerpo declarado como objeto literal no se valida
 
 ```typescript

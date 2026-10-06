@@ -62,15 +62,22 @@ const HORA_MIN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * Fecha civil (`YYYY-MM-DD`) y día de la semana en hora **local del servidor**,
- * que es la misma convención que usan `new Date('YYYY-MM-DD')` (UTC) y el resto
- * del backend para las columnas `@db.Date`, así que no introduce desfases.
+ * Fecha civil (`YYYY-MM-DD`) y día de la semana de una columna `@db.Date`.
+ *
+ * Se leen en **UTC** y no en hora local, y esto no es un detalle: estas columnas
+ * guardan la fecha civil como medianoche UTC. Leerlas con `getDate()`/`getDay()`
+ * (locales) las desplaza un día en cualquier huso negativo —Lima es UTC-5—, así
+ * que el 05/10/2026 (lunes) se leía como 04/10 (domingo). El efecto no era solo
+ * un mensaje equivocado: el horario de atención se validaba contra el día
+ * anterior, de modo que **un domingo se aceptaba** (validado como sábado) y un
+ * lunes se rechazaba. Además, `iso` se comparaba con los rangos de `descansos`,
+ * que también son fechas civiles.
  */
 function partesFecha(fecha: Date | string): { iso: string; dia: string } {
   const d = new Date(fecha);
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return { iso: `${d.getFullYear()}-${mm}-${dd}`, dia: DIAS[d.getDay()]! };
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return { iso: `${d.getUTCFullYear()}-${mm}-${dd}`, dia: DIAS[d.getUTCDay()]! };
 }
 
 /** "09:30" -> minutos desde medianoche. */
@@ -80,12 +87,15 @@ export function aMinutos(hora: string): number {
 }
 
 function mismoDia(a: Date | string, b: Date | string): boolean {
+  // En UTC, por el mismo motivo que `partesFecha`: comparar en local desplaza
+  // ambas fechas por igual y suele coincidir, pero deja de ser correcto en cuanto
+  // uno de los dos valores no es medianoche UTC.
   const da = new Date(a);
   const db = new Date(b);
   return (
-    da.getFullYear() === db.getFullYear() &&
-    da.getMonth() === db.getMonth() &&
-    da.getDate() === db.getDate()
+    da.getUTCFullYear() === db.getUTCFullYear() &&
+    da.getUTCMonth() === db.getUTCMonth() &&
+    da.getUTCDate() === db.getUTCDate()
   );
 }
 
@@ -130,6 +140,9 @@ export class CitasService {
   async crear(dto: CreateCitaDto): Promise<CitaRow> {
     const ctx = requireTenant();
     this.validarRango(dto.horaInicio, dto.horaFin);
+    // Antes que el horario y el solapamiento: si la franja ya pasó, ese es el
+    // motivo que el usuario necesita leer.
+    this.validarNoPasado(new Date(dto.fecha), dto.horaInicio);
     const paciente = await this.db.paciente.findUnique({ where: { id: dto.pacienteId } });
     if (!paciente || paciente.tenantId !== ctx.tenantId) {
       throw new NotFoundException('Paciente no encontrado');
@@ -205,6 +218,9 @@ export class CitasService {
     const sedeId = actual.sedeId ?? null;
     const dentistaId = actual.dentistaId ?? null;
     if (dto.fecha || dto.horaInicio || dto.horaFin) {
+      // Solo cuando se MUEVE la cita: cambiar el estado o la observación de una
+      // cita pasada (marcarla como realizada) debe seguir funcionando.
+      this.validarNoPasado(fecha, horaInicio);
       await this.validarHorario(fecha, horaInicio, horaFin);
       await this.verificarSolapamiento(fecha, horaInicio, horaFin, { sedeId, dentistaId }, id);
     }
@@ -223,6 +239,31 @@ export class CitasService {
   private validarRango(horaInicio: string, horaFin: string): void {
     if (aMinutos(horaFin) <= aMinutos(horaInicio)) {
       throw new BadRequestException('horaFin debe ser posterior a horaInicio');
+    }
+  }
+
+  /**
+   * Rechaza agendar en una franja que ya pasó.
+   *
+   * La cita ocurre en una **fecha civil** y una **hora local del consultorio**; la
+   * fecha se guarda como medianoche UTC (columnas `@db.Date`), así que el instante
+   * se reconstruye con las partes UTC de la fecha más la hora indicada, en la zona
+   * del servidor (que es la del consultorio).
+   *
+   * Sin esta comprobación se podía agendar para hoy a las 11:00 cuando ya eran las
+   * 22:00, y el usuario recibía un mensaje sobre el horario de atención en lugar
+   * del motivo real.
+   */
+  private validarNoPasado(fecha: Date | string, horaInicio: string): void {
+    const { iso } = partesFecha(fecha);
+    const [y, m, d] = iso.split('-').map(Number);
+    const [hh, mm] = horaInicio.split(':').map(Number);
+    if (![y, m, d, hh, mm].every((n) => Number.isFinite(n))) return;
+    const inicio = new Date(y, m - 1, d, hh, mm);
+    if (inicio.getTime() < Date.now()) {
+      throw new BadRequestException(
+        `No se puede agendar en el pasado: la franja ${iso} ${horaInicio} ya pasó`,
+      );
     }
   }
 

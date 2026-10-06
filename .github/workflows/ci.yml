@@ -36,6 +36,21 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx prisma migrate deploy
       - run: npx vitest run --config vitest.config.e2e.ts --fileParallelism=false
+      # Arranque REAL del binario compilado. Cubre fallos que las pruebas no
+      # pueden ver: transforman con Oxc (sí emite metadatos de decorador) y no
+      # pasan por dist/main.js. Ver scripts/smoke-arranque.mjs.
+      - run: npm run db:seed
+        env:
+          PLATFORM_OWNER_EMAIL: owner@test.pe
+          PLATFORM_OWNER_PASSWORD: Plataforma-Arranque-2026!
+      - run: npm run db:seed-demo
+        env:
+          DEMO_OWNER_EMAIL: demo@test.pe
+          DEMO_OWNER_PASSWORD: Demo-Arranque-2026!
+      - run: npm run smoke:arranque
+        env:
+          DEMO_OWNER_EMAIL: demo@test.pe
+          DEMO_OWNER_PASSWORD: Demo-Arranque-2026!
 
   frontend:
     runs-on: ubuntu-latest

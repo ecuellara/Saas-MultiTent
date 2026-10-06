@@ -20,6 +20,11 @@ export default defineConfig({
       RATE_LIMIT_LOGIN_EMAIL: '10000',
       RATE_LIMIT_MFA_IP: '10000',
       RATE_LIMIT_MFA_ID: '10000',
+      // Zona horaria del consultorio, FIJADA. Sin esto las pruebas dependen de la
+      // zona del runner (CI corre en UTC) y un fallo de fechas como el de
+      // `partesFecha` —que leía en local una fecha guardada en UTC— pasaría
+      // desapercibido en CI y aparecería en producción.
+      TZ: 'America/Lima',
     },
   },
 });

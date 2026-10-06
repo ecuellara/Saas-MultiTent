@@ -10,7 +10,7 @@ import {
 } from '../../services/catalogos'
 import { crearCita, type Cita } from '../../services/citas'
 import { mensajeDeError } from '../../services/errores'
-import { deInputFecha, sumarMinutos } from '../../services/fechas'
+import { deInputFecha, hoyLocal, sumarMinutos } from '../../services/fechas'
 import { listarPacientes, type Paciente } from '../../services/pacientes'
 import { useSessionStore } from '../../stores/session'
 import AvisoError from '../ui/AvisoError.vue'
@@ -49,6 +49,10 @@ const miembros = ref<Miembro[]>([])
 const cargando = ref(true)
 const guardando = ref(false)
 const error = ref('')
+
+/** Hoy en fecha civil local. El backend rechaza agendar en el pasado, así que el
+ *  calendario no ofrece días anteriores (la hora sigue validándose allí). */
+const hoy = hoyLocal()
 
 /** `GET /memberships` exige `members.manage`: sin permiso no se ofrece el selector. */
 const puedeVerEquipo = computed(() => sesion.puede('members.manage'))
@@ -181,6 +185,7 @@ async function guardar(): Promise<void> {
           id="cita-fecha"
           v-model="form.fecha"
           type="date"
+          :min="hoy"
           class="w-full rounded-md border border-line bg-background-soft px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
