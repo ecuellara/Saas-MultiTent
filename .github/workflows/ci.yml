@@ -36,3 +36,21 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx prisma migrate deploy
       - run: npx vitest run --config vitest.config.e2e.ts --fileParallelism=false
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      # `typecheck` cubre tipos y plantillas de .vue (vue-tsc);
+      # `build` cubre además el empaquetado real de Vite y Tailwind.
+      - run: npm run typecheck
+      - run: npm run build

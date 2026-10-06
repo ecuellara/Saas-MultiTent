@@ -8,7 +8,12 @@
  *     quedaba registrada como SUCCESS salvo 404/403.
  *  3. La fila de una mutación guarda `datosNuevos` (instantánea del cuerpo),
  *     redactado: sin claves sensibles y con las cadenas largas truncadas.
- *  4. El login de plataforma (`/platform/auth/*`, ruta `@Public`) deja fila en
+ *  4. La fila guarda también la IMAGEN PREVIA (`datosAnteriores`): el estado
+ *     ANTERIOR de la fila, leído por el propio interceptor antes del handler.
+ *     Se comprueba contra la fila real en un `PATCH` y en la baja lógica
+ *     (`DELETE`), que un recurso de OTRO tenant no deja ni un dato, y que la
+ *     imagen pasa por la MISMA redacción (columnas sensibles del modelo).
+ *  5. El login de plataforma (`/platform/auth/*`, ruta `@Public`) deja fila en
  *     `PlatformAuditLog`.
  */
 import { ForbiddenException, INestApplication, NotFoundException } from '@nestjs/common';
@@ -19,6 +24,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { AuditInterceptor, CrossTenantError } from '../src/core/audit/audit.interceptor.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
+import {
+  tenantContext,
+  type TenantStore,
+} from '../src/core/tenant-context/tenant-context.js';
 import { loginPlataformaConMfa } from './helpers/platform-login.js';
 import { PASSWORD_PLAIN, limpiarDosTenants, seedDosTenants, type DosTenants } from './helpers/tenants-fixture.js';
 
@@ -75,6 +84,10 @@ interface Db {
     create: (a: unknown) => Promise<{ id: string }>;
     deleteMany: (a: unknown) => Promise<unknown>;
   };
+  // Lecturas directas (sin pasar por la API) para comparar la imagen previa
+  // contra el estado REAL de la fila antes y después de la mutación.
+  paciente: { findUnique: (a: unknown) => Promise<Record<string, unknown> | null> };
+  consentimientoFirmado: { findUnique: (a: unknown) => Promise<Record<string, unknown> | null> };
 }
 
 type Redactar = (valor: unknown, profundidad: number) => unknown;
@@ -83,6 +96,14 @@ type Redactar = (valor: unknown, profundidad: number) => unknown;
 function redactarDe(interceptor: AuditInterceptor): Redactar {
   const proto = Object.getPrototypeOf(interceptor) as { redactar: Redactar };
   return proto.redactar.bind(interceptor);
+}
+
+type ImagenPrevia = (req: Record<string, unknown>) => Promise<Record<string, unknown> | null>;
+
+/** Acceso al método privado que captura la imagen previa. */
+function imagenPreviaDe(interceptor: AuditInterceptor): ImagenPrevia {
+  const proto = Object.getPrototypeOf(interceptor) as { imagenPreviaDe: ImagenPrevia };
+  return proto.imagenPreviaDe.bind(interceptor);
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -158,9 +179,13 @@ describe('Auditoría (e2e)', () => {
     if (app) await app.close();
   });
 
-  it('una mutación exitosa se audita como SUCCESS con datosNuevos', async () => {
+  it('una mutación exitosa se audita como SUCCESS con datosNuevos y la imagen previa', async () => {
     const srv = app.getHttpServer();
     const desde = new Date();
+    // Estado ANTERIOR real, leído de la BD: la imagen previa debe reproducirlo.
+    const antes = await db.paciente.findUnique({ where: { id: datos.a.pacienteId } });
+    expect(antes, 'el fixture no dejó el paciente de A').toBeTruthy();
+
     await request(srv)
       .patch(`/api/pacientes/${datos.a.pacienteId}`)
       .set(adminH)
@@ -180,9 +205,17 @@ describe('Auditoría (e2e)', () => {
     expect(fila!.datosNuevos).not.toBeNull();
     const datosNuevos = fila!.datosNuevos as Record<string, unknown>;
     expect(datosNuevos.telefono).toBe('988777666');
-    // `datosAnteriores` no tiene fuente fiable (no hay imagen previa por
-    // servicio): se documenta como `null` en lugar de inventarlo.
-    expect(fila!.datosAnteriores ?? null).toBeNull();
+    // Bug 1: `datosAnteriores` se quedaba siempre en `null` porque "no había
+    // imagen previa sin tocar cada servicio". Ahora la captura el interceptor
+    // ANTES del handler: el valor ANTERIOR y el nuevo conviven en la misma fila.
+    expect(fila!.datosAnteriores, 'el PATCH no guardó la imagen previa').not.toBeNull();
+    const datosAnteriores = fila!.datosAnteriores as Record<string, unknown>;
+    expect(datosAnteriores.telefono).toBe(antes!.telefono);
+    expect(datosAnteriores.telefono).not.toBe(datosNuevos.telefono);
+    // Instantánea del registro completo (no solo del campo tocado).
+    expect(datosAnteriores.id).toBe(datos.a.pacienteId);
+    expect(datosAnteriores.tenantId).toBe(datos.a.tenantId);
+    expect(datosAnteriores.nombres).toBe(antes!.nombres);
   });
 
   it('un login fallido se audita como FAILURE y sin tenant atribuido', async () => {
@@ -233,7 +266,7 @@ describe('Auditoría (e2e)', () => {
     expect(fila!.tabla).toBe('pacientes');
   });
 
-  it('un 404 de recurso ajeno se audita como FAILURE sin persistir el cuerpo', async () => {
+  it('un 404 de recurso ajeno se audita como FAILURE sin persistir el cuerpo ni la imagen previa', async () => {
     const srv = app.getHttpServer();
     const desde = new Date();
     // Recurso de otro tenant: el servicio responde 404 (no revela existencia) y
@@ -256,6 +289,73 @@ describe('Auditoría (e2e)', () => {
     // En un fallo NO se persiste ninguna instantánea del cuerpo: la redacción se
     // aplica a lo que sí se guarda, y aquí directamente no se guarda nada.
     expect(fila!.datosNuevos ?? null).toBeNull();
+    // El interceptor lee la fila con `findUnique` por id, que NO pasa por la
+    // extensión de aislamiento: la pertenencia al tenant del contexto validado
+    // se comprueba antes de persistir. Si no coincide, no hay imagen previa.
+    expect(fila!.datosAnteriores ?? null).toBeNull();
+    // Ni un solo dato del paciente de B en la fila (el `registroId` es el id
+    // consultado, no un dato del expediente ajeno).
+    const pacienteB = await db.paciente.findUnique({ where: { id: datos.b.pacienteId } });
+    expect(pacienteB, 'el fixture no dejó el paciente de B').toBeTruthy();
+    const serializada = JSON.stringify(fila);
+    expect(serializada).not.toContain(String(pacienteB!.numDoc));
+    expect(serializada).not.toContain(String(pacienteB!.apellidos));
+    expect(serializada).not.toContain(String(pacienteB!.nombres) + ' ' + String(pacienteB!.apellidos));
+  });
+
+  it('la imagen previa se redacta con la misma política y nunca cruza tenants', async () => {
+    // `ConsentimientoFirmado` SÍ tiene columnas sensibles (`datosSnapshot`,
+    // `cuerpoSnapshot`) y el fixture las rellena con texto reconocible: es el
+    // caso real que demuestra que la imagen previa no se guarda en claro.
+    //
+    // Se ejercita `imagenPreviaDe` (la MISMA función que alimenta
+    // `datosAnteriores`) contra la fila real de la BD y no vía HTTP a propósito:
+    // la aserción global de "claves prohibidas" comprueba NOMBRES de clave y
+    // `redactar` conserva la clave con valor `[REDACTADO]`, así que una fila de
+    // consentimiento con esas claves haría fallar ese escaneo sin que haya
+    // ningún secreto expuesto.
+    const interceptor = new AuditInterceptor(prisma);
+    const imagenPrevia = imagenPreviaDe(interceptor);
+    // Contexto idéntico al que deja `TenantGuard` tras validar la membresía.
+    const contextoA: TenantStore = {
+      tenantId: datos.a.tenantId,
+      userId: datos.a.userId,
+      roleIds: [],
+      permissions: [],
+      validado: true,
+    };
+
+    const antes = await db.consentimientoFirmado.findUnique({
+      where: { id: datos.a.consentimientoId },
+    });
+    expect(antes, 'el fixture no dejó el consentimiento de A').toBeTruthy();
+    expect(String(antes!.cuerpoSnapshot)).toContain('Texto Paciente');
+
+    const imagenA = await tenantContext.run(contextoA, () =>
+      imagenPrevia({
+        method: 'PATCH',
+        originalUrl: `/api/consentimientos/${datos.a.consentimientoId}/estado`,
+        params: { id: datos.a.consentimientoId },
+      }),
+    );
+    expect(imagenA, 'sin imagen previa del consentimiento').toBeTruthy();
+    // Misma función `redactar`: las columnas sensibles se sustituyen.
+    expect(imagenA!.datosSnapshot).toBe('[REDACTADO]');
+    expect(imagenA!.cuerpoSnapshot).toBe('[REDACTADO]');
+    expect(imagenA!.pacienteId).toBe(datos.a.pacienteId);
+    // El texto sensible del fixture no aparece en claro en la imagen previa.
+    expect(JSON.stringify(imagenA)).not.toContain('Texto Paciente');
+
+    // Fila de OTRO tenant: `findUnique` no filtra por la extensión, así que la
+    // pertenencia se comprueba en el interceptor y la imagen se descarta.
+    const imagenAjena = await tenantContext.run(contextoA, () =>
+      imagenPrevia({
+        method: 'PATCH',
+        originalUrl: `/api/pacientes/${datos.b.pacienteId}`,
+        params: { id: datos.b.pacienteId },
+      }),
+    );
+    expect(imagenAjena ?? null).toBeNull();
   });
 
   it('el acceso cruzado se detecta por marca explícita y no por el código HTTP', () => {
@@ -285,6 +385,12 @@ describe('Auditoría (e2e)', () => {
       select: { id: true, datosNuevos: true, datosAnteriores: true },
     });
     expect(filas.length, 'sin filas de auditoría para inspeccionar').toBeGreaterThan(0);
+    // La imagen previa también se inspecciona aquí: antes era SIEMPRE `null`,
+    // así que esta aserción garantiza que el escaneo no es vacío.
+    expect(
+      filas.some((f) => f.datosAnteriores !== null),
+      'ninguna fila tiene imagen previa: el escaneo no cubriría `datosAnteriores`',
+    ).toBe(true);
     for (const fila of filas) {
       const serializado = JSON.stringify({ n: fila.datosNuevos, a: fila.datosAnteriores });
       for (const prohibida of CLAVES_PROHIBIDAS) {
@@ -371,5 +477,40 @@ describe('Auditoría (e2e)', () => {
     expect(fila, 'el login de plataforma no dejó fila en PlatformAuditLog').toBeTruthy();
     expect(fila!.recurso).toBe('platformUser');
     expect((fila!.metadata as { resultado?: string } | null)?.resultado).toBe('SUCCESS');
+  });
+
+  // Último a propósito: da de baja al paciente de A, que los casos anteriores
+  // usan para el PATCH.
+  it('la baja lógica del paciente guarda la imagen previa y deja deletedAt', async () => {
+    const srv = app.getHttpServer();
+    const desde = new Date();
+    const antes = await db.paciente.findUnique({ where: { id: datos.a.pacienteId } });
+    expect(antes, 'el fixture no dejó el paciente de A').toBeTruthy();
+    expect(antes!.deletedAt ?? null, 'el paciente de A ya estaba dado de baja').toBeNull();
+
+    await request(srv).delete(`/api/pacientes/${datos.a.pacienteId}`).set(adminH).expect(200);
+
+    const fila = await esperarAuditoria(db, {
+      tenantId: datos.a.tenantId,
+      registroId: datos.a.pacienteId,
+      resultado: 'SUCCESS',
+      createdAt: { gte: desde },
+    });
+    expect(fila, 'sin fila de auditoría para el DELETE').toBeTruthy();
+    expect(fila!.accion).toBe(`DELETE /api/pacientes/${datos.a.pacienteId}`);
+    const datosAnteriores = fila!.datosAnteriores as Record<string, unknown> | null;
+    expect(datosAnteriores, 'la baja lógica no guardó la imagen previa').not.toBeNull();
+    // Imagen del paciente BORRADO, campo a campo contra la fila real.
+    expect(datosAnteriores!.nombres).toBe(antes!.nombres);
+    expect(datosAnteriores!.apellidos).toBe(antes!.apellidos);
+    expect(datosAnteriores!.numDoc).toBe(antes!.numDoc);
+    expect(datosAnteriores!.telefono).toBe(antes!.telefono);
+    // Estado ANTERIOR: todavía no estaba dado de baja.
+    expect(datosAnteriores!.deletedAt ?? null).toBeNull();
+
+    // La baja es LÓGICA: la fila sigue existiendo, con `deletedAt`.
+    const despues = await db.paciente.findUnique({ where: { id: datos.a.pacienteId } });
+    expect(despues, 'la baja lógica borró la fila').toBeTruthy();
+    expect(despues!.deletedAt ?? null).not.toBeNull();
   });
 });

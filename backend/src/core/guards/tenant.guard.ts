@@ -8,6 +8,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { IS_PLATFORM_KEY } from '../auth/platform.decorator.js';
 import { IS_PUBLIC_KEY } from '../auth/public.decorator.js';
+import { IS_TENANT_OPCIONAL_KEY } from '../auth/tenant-opcional.decorator.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { tenantContext } from '../tenant-context/tenant-context.js';
 
@@ -18,6 +19,8 @@ import { tenantContext } from '../tenant-context/tenant-context.js';
  * - Fija el `TenantContext` con `enterWith` para toda la petición.
  * Responde 403 (no 404) cuando el vínculo usuario–clínica no existe:
  * no revela nada del recurso, solo del vínculo.
+ * - En rutas `@TenantOpcional()` sin cabecera no valida nada y deja pasar con
+ *   el contexto SIN validar.
  */
 @Injectable()
 export class TenantGuard implements CanActivate {
@@ -37,9 +40,28 @@ export class TenantGuard implements CanActivate {
     ]);
     if (isPublic || esPlataforma) return true;
 
+    // `@TenantOpcional()`: la cabecera pasa a ser opcional, pero SOLO su
+    // ausencia. Si viene, se valida como en cualquier otra ruta.
+    const tenantOpcional = this.reflector.getAllAndOverride<boolean>(IS_TENANT_OPCIONAL_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
     const req = context.switchToHttp().getRequest();
     const tenantId: string | undefined =
       req.headers?.['x-tenant-id'] ?? req.headers?.['X-Tenant-Id'];
+
+    // Cabecera ausente (o en blanco) en una ruta con tenant opcional: no hay
+    // clínica que validar y se deja pasar. El store se queda como lo dejó
+    // `TenantContextMiddleware`, es decir con `validado: false` (lo mismo que
+    // en las rutas `@Public`), así que la extensión Prisma NO filtra nada.
+    // Consecuencia obligatoria para quien consuma esa ruta: debe acotar sus
+    // consultas con el `userId` (o el `tenantId`) explícitos, sin confiar en la
+    // extensión. El token ya lo validó `JwtAuthGuard`, que corre antes.
+    const sinCabecera =
+      tenantId === undefined || (typeof tenantId === 'string' && tenantId.trim() === '');
+    if (tenantOpcional && sinCabecera) return true;
+
     if (!tenantId || typeof tenantId !== 'string' || tenantId.trim() === '') {
       throw new BadRequestException('Cabecera X-Tenant-Id requerida');
     }

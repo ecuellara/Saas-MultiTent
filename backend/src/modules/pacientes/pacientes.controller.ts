@@ -1,10 +1,24 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { IsInt, IsOptional, IsString, Max } from 'class-validator';
 import type { Response } from 'express';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
+import { StorageService } from '../../core/storage/storage.service.js';
 import { CreatePacienteDto, UpdatePacienteDto } from './pacientes.dto.js';
-import { PacientesService } from './pacientes.service.js';
+import { PacientesService, type ArchivoSubido } from './pacientes.service.js';
 
 export class CreateDocumentoDto {
   @ApiProperty({ example: 'radiografia.png' })
@@ -86,6 +100,30 @@ export class PacientesController {
     @Body() dto: CreateDocumentoDto,
   ): Promise<unknown> {
     return this.service.registrarDocumento(id, dto);
+  }
+
+  /**
+   * Subida REAL del archivo (multipart, campo `archivo` + campo `tipo`).
+   * Complementa a `registrarDocumento`, que sólo guarda metadatos.
+   *
+   * No se importa `memoryStorage` de `multer` a propósito: es el storage por
+   * defecto de `FileInterceptor`, y así no se depende de `@types/multer` (que no
+   * está instalado). El límite de tamaño lo aplica multer, de modo que un
+   * archivo demasiado grande se corta antes de llegar al manejador.
+   */
+  @Post(':id/documentos/archivo')
+  @RequirePermission('patients.write')
+  @UseInterceptors(
+    FileInterceptor('archivo', {
+      limits: { fileSize: StorageService.MAX_KB * 1024, files: 1 },
+    }),
+  )
+  subirDocumento(
+    @Param('id') id: string,
+    @UploadedFile() archivo: ArchivoSubido | undefined,
+    @Body('tipo') tipo: string,
+  ): Promise<unknown> {
+    return this.service.subirDocumento(id, archivo, tipo);
   }
 
   @Get(':id/documentos/:docId/descarga')

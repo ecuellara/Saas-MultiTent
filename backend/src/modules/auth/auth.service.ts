@@ -1,5 +1,12 @@
-import { HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { EntitlementsService } from '../../core/entitlements/entitlements.service.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { hashPassword, validarPassword, verificarPassword } from '../../core/auth/passwords.js';
 import {
@@ -24,6 +31,66 @@ type UserRow = {
   estado: string;
 };
 
+/** Datos públicos del usuario en la sesión: NUNCA credenciales ni MFA. */
+export interface SesionUsuario {
+  id: string;
+  email: string;
+  nombre: string;
+  cop: string | null;
+}
+
+/** Clínica del usuario con el rol y la sede que tiene EN esa clínica. */
+export interface SesionTenant {
+  id: string;
+  nombre: string;
+  slug: string;
+  /** Código del rol en esa clínica (`ADMIN`, `RECEP`, …), no el `roleId`. */
+  rol: string;
+  sedeId: string | null;
+}
+
+/** Clínica activa (la de `X-Tenant-Id`) con permisos y features del plan. */
+export interface SesionActivo {
+  tenantId: string;
+  rol: string;
+  sedeId: string | null;
+  /** Códigos de permiso del rol (`patients.read`, …), como los carga el guard. */
+  permissions: string[];
+  /** Features del plan vigente; `{}` si el tenant no tiene suscripción. */
+  features: Record<string, { habilitado: boolean; limite: number | null }>;
+}
+
+/** Contrato de `GET /api/auth/sesion`. */
+export interface Sesion {
+  usuario: SesionUsuario;
+  tenants: SesionTenant[];
+  activo: SesionActivo | null;
+}
+
+/** Fila de membresía con la clínica y el rol ya resueltos (lectura anidada). */
+type MembershipSesion = {
+  tenantId: string;
+  roleId: string;
+  sedeId: string | null;
+  tenant: { id: string; nombre: string; slug: string; estado: string; deletedAt: Date | null };
+  role: { codigo: string };
+};
+
+type DbSesion = {
+  user: {
+    findUnique: (a: unknown) => Promise<{
+      id: string;
+      email: string;
+      nombre: string;
+      cop: string | null;
+      memberships: MembershipSesion[];
+    } | null>;
+  };
+  rolePermission: {
+    findMany: (a: unknown) => Promise<Array<{ permission: { codigo: string } }>>;
+  };
+};
+
 @Injectable()
 export class AuthService {
   /**
@@ -35,6 +102,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   private get db(): {
@@ -78,6 +146,103 @@ export class AuthService {
     const presentado = leerRefreshCookie(req);
     if (presentado) await revocarRefresh(this.prisma, presentado);
     return { ok: true as const };
+  }
+
+  /**
+   * Sesión del usuario (`GET /auth/sesion`): quién es, a qué clínicas pertenece
+   * y —si se declara `X-Tenant-Id`— los permisos y features de esa clínica.
+   *
+   * Se consulta POR USUARIO (`userId` explícito) y NO por tenant: la ruta lleva
+   * `@TenantOpcional()`, así que en la petición sin cabecera el `TenantContext`
+   * queda sin validar y la extensión Prisma NO filtra. Además la lectura se hace
+   * desde `User` (modelo global, fuera de `TENANT_MODELS`): así la lista de
+   * clínicas no se recorta a la clínica de la cabecera —que es justamente lo que
+   * el selector necesita— ni depende de que el contexto esté validado.
+   *
+   * @param tenantId clínica declarada en `X-Tenant-Id`; si falta, `activo: null`.
+   * @throws UnauthorizedException si el usuario no existe (token de un borrado).
+   * @throws ForbiddenException 403 si el usuario no tiene membresía en `tenantId`.
+   */
+  async sesion(userId: string, tenantId?: string): Promise<Sesion> {
+    const db = this.prisma as unknown as DbSesion;
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        nombre: true,
+        cop: true,
+        memberships: {
+          where: { estado: 'ACTIVE' },
+          orderBy: { joinedAt: 'asc' },
+          select: {
+            tenantId: true,
+            roleId: true,
+            sedeId: true,
+            tenant: {
+              select: { id: true, nombre: true, slug: true, estado: true, deletedAt: true },
+            },
+            role: { select: { codigo: true } },
+          },
+        },
+      },
+    });
+    if (!user) throw new UnauthorizedException('Sesión no válida');
+
+    // Membresías ACTIVE de clínicas ACTIVE y no dadas de baja. Se filtran aquí
+    // (y no en el `where` anidado) porque `estado`/`deletedAt` viven en `Tenant`.
+    const membresias = user.memberships.filter(
+      (m) => m.tenant.estado === 'ACTIVE' && m.tenant.deletedAt === null,
+    );
+
+    const usuario: SesionUsuario = {
+      id: user.id,
+      email: user.email,
+      nombre: user.nombre,
+      cop: user.cop,
+    };
+    const tenants: SesionTenant[] = membresias.map((m) => ({
+      id: m.tenant.id,
+      nombre: m.tenant.nombre,
+      slug: m.tenant.slug,
+      rol: m.role.codigo,
+      sedeId: m.sedeId,
+    }));
+
+    // Sin cabecera: el frontend todavía no ha elegido clínica (selector).
+    if (!tenantId) return { usuario, tenants, activo: null };
+
+    const activa = membresias.find((m) => m.tenantId === tenantId);
+    if (!activa) throw new ForbiddenException('Sin membresía en este tenant');
+
+    // Permisos del rol y features del plan son independientes entre sí.
+    const [permissions, ent] = await Promise.all([
+      this.permisosDelRol(activa.roleId),
+      this.entitlements.resolver(tenantId),
+    ]);
+
+    return {
+      usuario,
+      tenants,
+      activo: {
+        tenantId,
+        rol: activa.role.codigo,
+        sedeId: activa.sedeId,
+        permissions,
+        // Sin suscripción `resolver` devuelve `null` y no hay features que mostrar.
+        features: ent?.features ?? {},
+      },
+    };
+  }
+
+  /** Códigos de permiso del rol, en el mismo formato que carga `TenantGuard`. */
+  private async permisosDelRol(roleId: string): Promise<string[]> {
+    const db = this.prisma as unknown as DbSesion;
+    const filas = await db.rolePermission.findMany({
+      where: { roleId },
+      include: { permission: true },
+    });
+    return filas.map((f) => f.permission.codigo);
   }
 
   /** Cambiar la clave invalida todos los tokens (passwordChangedAt, doc §8). */

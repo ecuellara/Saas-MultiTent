@@ -28,6 +28,7 @@
 17. [Checklist antes de vender](#17-checklist-antes-de-vender)
 18. [Riesgos y mitigaciones](#18-riesgos-y-mitigaciones)
 19. [Próximos pasos](#19-próximos-pasos)
+20. [Registro de deuda técnica](#20-registro-de-deuda-técnica)
 
 ---
 
@@ -246,27 +247,96 @@ src/
 
 ### Frontend Vue 3 (estructura)
 
+Proyecto propio en `frontend/` (Vue 3.5 + Vite 8 + Pinia 4 + Router 5 + Tailwind 4),
+hermano de `backend/`. **Estado actual — cimientos construidos y verificados:**
+
 ```text
-src/
+frontend/src/
+├── services/
+│   ├── api.ts                  # axios: Bearer + X-Tenant-Id; 401 → evento (sin recarga)
+│   └── errores.ts              # mensajeDeError / esNoEncontrado / esProhibido / esConflicto
 ├── stores/
-│   ├── auth.store.ts
-│   ├── session.store.ts    # user + tenant + role + permissions + features + limits
-│   └── tenant.store.ts
-├── composables/
-│   ├── usePermissions.ts
-│   ├── useFeatures.ts
-│   └── useTenant.ts
-├── services/               # capa de dominio (elimina llamadas api.* dispersas)
-├── layouts/
-│   ├── AppLayout.vue
-│   └── AdminLayout.vue
+│   ├── session.ts              # usuario + clínicas + activa (rol, permisos, features)
+│   └── theme.ts                # claro/oscuro (la clase se aplica antes de pintar)
+├── components/layout/
+│   ├── navigation.ts           # menú con permiso/feature por item (fuente única)
+│   └── AppSidebar.vue          # filtra el menú y permite cambiar de clínica
+├── layouts/AppLayout.vue       # cabecera + menú (superpuesto en móvil)
+├── router/index.ts             # guard: token → sesión → clínica → permiso
 └── views/
-    ├── auth/ dashboard/ patients/ appointments/ treatments/
-    ├── odontogram/ payments/ inventory/ suppliers/ documents/
-    ├── config/ admin/      # admin = plataforma (separado)
+    ├── auth/LoginView.vue
+    ├── auth/SeleccionClinicaView.vue   # selector (solo si hay más de una clínica)
+    ├── DashboardView.vue               # comprobación del enlazado multi-clínica
+    └── EnConstruccionView.vue          # relleno de los módulos pendientes
 ```
 
+**Pendiente:** las vistas de cada módulo (pacientes, agenda, odontograma,
+consentimientos, pagos, inventario, compras, usuarios, sedes, configuración) y el
+`AdminLayout` del panel de plataforma. Las rutas ya están declaradas con su
+`meta.permiso`, así que sustituir `EnConstruccionView` por la vista real no obliga a
+tocar el enrutado ni el menú.
+
 **Regla de oro:** el frontend **oculta** lo no permitido; el backend **rechaza** lo no permitido.
+
+### El endpoint que hace posible el multi-clínica
+
+El JWT lleva **solo `sub`** (ADR-005), así que el frontend no puede deducir de él ni
+quién es el usuario ni a qué clínicas pertenece. Eso obliga a un endpoint de sesión:
+
+```text
+GET /api/auth/sesion
+Authorization: Bearer <access_token>
+X-Tenant-Id: <tenantId>            ← OPCIONAL
+
+200 → {
+  usuario: { id, email, nombre, cop },
+  tenants: [ { id, nombre, slug, rol, sedeId } ],
+  activo: null | { tenantId, rol, sedeId, permissions: string[], features: {...} }
+}
+```
+
+- **Sin `X-Tenant-Id`** → `activo: null` y el frontend muestra el selector de clínica.
+- **Con `X-Tenant-Id` válido** → `activo` resuelto (permisos del rol y features del plan).
+- **Con `X-Tenant-Id` inválido o ajeno** → **403**, como el resto de la API.
+
+Se apoya en `@TenantOpcional()`: con esa marca, `TenantGuard` deja pasar la petición
+**sin validar** cuando no hay cabecera (el contexto queda `validado: false`, igual que
+en una ruta `@Public`). Si hay cabecera, el camino es el de siempre.
+
+> **Consecuencia importante para cualquier servicio que corra sin contexto validado:**
+> la extensión Prisma **no filtra** (solo lo hace con `validado: true`), así que estas
+> rutas deben acotar por sí mismas. Y hay un matiz que no es evidente: las membresías
+> se leen **desde `User`** (`user.findUnique({ select: { memberships: … } })`), no con
+> `membership.findMany({ where: { userId } })`. El motivo es que `Membership` está en
+> `TENANT_MODELS` y `findMany` en las operaciones de lectura, de modo que con una
+> cabecera válida la extensión **inyectaría `tenantId` en el `where`** y la lista se
+> recortaría a esa clínica: un usuario multi-clínica perdería el resto de sus clínicas
+> justo en el endpoint que existe para listarlas. La extensión solo reescribe el modelo
+> **raíz** de la operación, no las relaciones anidadas.
+
+### Convención de fechas (afecta a todo formulario)
+
+Un campo `DateTime` de Prisma **rechaza** la forma corta `aaaa-mm-dd`: el motor
+responde «Datos inválidos», que el filtro global traduce a **400**. Como
+`<input type="date">` devuelve exactamente esa forma, la conversión es obligatoria:
+
+```text
+input (aaaa-mm-dd)  →  `${valor}T00:00:00.000Z`  →  Prisma           (al enviar)
+Prisma (ISO UTC)    →  toLocaleDateString(..., { timeZone: 'UTC' })  (al mostrar)
+```
+
+Las dos mitades son necesarias. Si se guarda medianoche UTC y se formatea en hora
+local, en cualquier huso negativo (Lima es UTC-5) la fecha se muestra **un día
+antes**: el 09/03 aparece como 08/03. Regla práctica:
+
+- **Fecha sin hora** (fecha de nacimiento, `HistorialClinico.fecha`, cuota):
+  se envía con el sufijo `T00:00:00.000Z` y se formatea con `timeZone: 'UTC'`.
+- **Instante real** (`createdAt`, `firmadoEn`): se formatea en la hora del usuario.
+
+Este defecto no lo detecta el compilador y no aparece en los e2e que montan la app
+sin el pipe global, por eso hay un spec de contrato
+(`backend/test/contrato-paciente.e2e-spec.ts`) que envía el cuerpo tal como lo
+construye el frontend y fija ambos comportamientos.
 
 ---
 
@@ -1270,11 +1340,35 @@ Nivel 10 Operación         Secrets, backups, monitoreo, CI/CD
 /tenants/{tenantId}/exports/{exportId}.zip
 ```
 
-- Buckets **privados**, URLs **firmadas de 5–15 min**.
-- El backend valida `tenantId` antes de firmar o leer cualquier clave.
-- Validación de **MIME por contenido** (magic bytes) y tamaño.
-- Metadatos en BD con `tenantId`.
-- El `storage.service.ts` actual debe **verificar contención de rutas** (`path.resolve` + `startsWith(localDir)`) para cerrar el path traversal latente.
+- Buckets **privados**; en producción, URLs **firmadas de 5–15 min**. Con el
+  proveedor local la descarga pasa por la API (ver endpoints abajo).
+- El backend valida `tenantId` antes de escribir o leer cualquier clave, y la
+  contención de rutas (`path.resolve` + `startsWith(base + sep)`) cierra el
+  path traversal.
+- **La clave la construye siempre el servidor** (`construirClave`); nunca se acepta
+  del cliente. Aceptarla permitía registrar el documento de un paciente apuntando
+  al archivo de **otro** paciente del mismo tenant y descargarlo después.
+- **Doble validación por contenido (magic bytes)**, porque confiar en el `mimeType`
+  declarado es lo que habilita el XSS almacenado:
+  - **al subir**: el tipo se deriva del contenido, el tamaño real sale de
+    `file.size` y el archivo se rechaza antes de tocar el disco;
+  - **al servir**: se vuelve a comprobar que el contenido coincide con el
+    `mimeType` de la fila; si no coincide, no se entrega ni un byte (404).
+- Metadatos en BD con `tenantId`; la `storageKey` **no se expone** en las respuestas.
+
+**Endpoints de documentos** (`patients.write` para subir, `patients.read` para leer):
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| `POST` | `/api/pacientes/:id/documentos` | Registra **metadatos** sin bytes (se conserva para flujos administrativos) |
+| `POST` | `/api/pacientes/:id/documentos/archivo` | **Sube el archivo** (`multipart`: campo `archivo` + campo `tipo`) |
+| `GET` | `/api/pacientes/:id/documentos` | Lista metadatos (sin `storageKey`) |
+| `GET` | `/api/pacientes/:id/documentos/:docId/descarga` | Entrega el **binario**, con `Content-Type` verificado, `nosniff` y `Content-Disposition` |
+
+> Con el proveedor local la descarga **no** es una URL firmada: pasa por la API,
+> que es quien valida la firma del archivo antes de entregarlo. Cuando se conecte
+> un almacenamiento de objetos, `leerDocumentoValidado` se sustituye por la firma
+> de una URL temporal, manteniendo la misma comprobación previa.
 
 ---
 
@@ -1558,6 +1652,19 @@ Fixture de **dos tenants** (`A`, `B`) y un test por módulo que intenta acceder 
 4. Escribir los tests de aislamiento como primera tarea de la Fase 1 (test-first para el núcleo de aislamiento).
 5. Migrar la clínica actual como primer tenant (Fase 4).
 6. Incorporar el segundo cliente **solo** cuando las pruebas de aislamiento pasen en CI.
+
+---
+
+## 20. Registro de deuda técnica
+
+Lo que se decidió **no** hacer todavía vive en [deuda-tecnica.md](deuda-tecnica.md).
+Ahí está, como primera sección, la decisión sobre las integraciones de pago
+(**solo Izipay**, en tres etapas: pagos únicos → suscripciones → embebido) con el
+diseño de verificación de firma ya documentado por el proveedor, y a continuación
+el resto de aplazamientos conscientes.
+
+Regla: si algo está en ese documento, está pendiente **a propósito** y no debe
+tratarse como un bug.
 
 ---
 

@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --primary: #0756a3;
+  --primary-dark: #06457f;
+  --secondary: #12b8ce;
+
+  --background: #ffffff;
+  --background-soft: #f4f8fa;
+
+  --text-primary: #172b3a;
+  --text-secondary: #64748b;
+
+  --border: #d9e7ee;
+
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --error: #dc2626;
+}
+
+.dark {
+  --primary: #3b9df0;
+  --primary-dark: #2f86d4;
+  --secondary: #22d3ee;
+
+  --background: #111c26;
+  --background-soft: #0b141c;
+
+  --text-primary: #e8f0f6;
+  --text-secondary: #8ba3b5;
+
+  --border: #22333f;
+
+  --success: #34d399;
+  --warning: #fbbf24;
+  --error: #f87171;
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-secondary: var(--secondary);
+
+  --color-background: var(--background);
+  --color-background-soft: var(--background-soft);
+
+  --color-ink: var(--text-primary);
+  --color-muted: var(--text-secondary);
+
+  --color-line: var(--border);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+}
+
+@layer base {
+  body {
+    @apply bg-background-soft text-ink antialiased;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+}
+
+/* Superficies que deben permanecer claras aunque la app esté en modo oscuro
+   (documentos imprimibles, PDF en pantalla). */
+.doc-light {
+  color-scheme: light;
+  --primary: #0756a3;
+  --primary-dark: #06457f;
+  --secondary: #12b8ce;
+  --background: #ffffff;
+  --background-soft: #f4f8fa;
+  --text-primary: #172b3a;
+  --text-secondary: #64748b;
+  --border: #d9e7ee;
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --error: #dc2626;
+}

@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 
 /**
@@ -66,6 +66,29 @@ export class StorageService {
    */
   rutaLocal(storageKey: string): string {
     return this.resolverLocal(this.uploadsBase, storageKey);
+  }
+
+  /**
+   * Escribe el contenido de un archivo del tenant en el proveedor local.
+   *
+   * La clave la construye SIEMPRE el servidor (`construirClave`) y aquí se
+   * revalida el prefijo del tenant y la contención de rutas **antes** de tocar
+   * el disco, igual que en la lectura.
+   */
+  async escribirLocal(tenantId: string, storageKey: string, contenido: Buffer): Promise<void> {
+    this.assertClaveTenant(tenantId, storageKey);
+    const ruta = this.rutaLocal(storageKey);
+    await mkdir(path.dirname(ruta), { recursive: true });
+    await writeFile(ruta, contenido);
+  }
+
+  /**
+   * Borra un archivo del tenant. No falla si ya no existe (`force: true`), de
+   * modo que sirve como acción compensatoria cuando la escritura en disco tuvo
+   * éxito pero la fila en base de datos no llegó a crearse.
+   */
+  async eliminarLocal(storageKey: string): Promise<void> {
+    await rm(this.rutaLocal(storageKey), { force: true });
   }
 
   /**

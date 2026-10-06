@@ -102,10 +102,46 @@ const MAX_LARGO_CADENA = 500;
 /** Profundidad máxima al serializar el cuerpo (evita ciclos/anidamiento hostil). */
 const MAX_PROFUNDIDAD = 8;
 
+/**
+ * Correspondencia ÚNICA recurso de la URL → modelo Prisma de los recursos
+ * auditables: de aquí salen tanto `Auditoria.tabla` (el recurso de la URL) como
+ * el delegado con el que se lee la IMAGEN PREVIA. No duplicar esta tabla en
+ * otro sitio.
+ *
+ * Solo entran modelos con `tenantId` denormalizado (ADR-002): sin tenant en la
+ * fila no habría pertenencia que verificar y la imagen previa no podría
+ * descartarse con criterio. Por eso NO entra `usuarios` (`User` es global y su
+ * vínculo con el tenant vive en `Membership`) ni `webhooks` (`WebhookEvent` no
+ * tiene `tenantId`).
+ */
+const MODELO_POR_RECURSO: Record<string, string> = {
+  pacientes: 'paciente',
+  citas: 'cita',
+  historiales: 'historialClinico',
+  odontogramas: 'odontograma',
+  consentimientos: 'consentimientoFirmado',
+  pagos: 'pago',
+  compras: 'compra',
+  insumos: 'insumo',
+  proveedores: 'proveedor',
+  especialidades: 'especialidad',
+  tratamientos: 'tratamiento',
+  subscriptions: 'subscription',
+  roles: 'role',
+  memberships: 'membership',
+  sedes: 'sede',
+  facturacion: 'cobroSuscripcion',
+};
+
 /** Forma mínima del cliente Prisma que usa el interceptor. */
 interface ClienteAuditoria {
   auditoria: { create: (a: unknown) => Promise<unknown> };
   platformAuditLog: { create: (a: unknown) => Promise<unknown> };
+}
+
+/** Delegado Prisma mínimo para leer la fila actual (imagen previa por `id`). */
+interface DelegadoLectura {
+  findUnique: (args: { where: { id: string } }) => Promise<Record<string, unknown> | null>;
 }
 
 /** Payload de la fila de `Auditoria` (equivale a `Prisma.AuditoriaUncheckedCreateInput`). */
@@ -120,8 +156,8 @@ interface FilaAuditoria {
   resultado: ResultadoAuditoria;
   ip: string | null;
   userAgent: string | null;
-  /** Sin imagen previa: no hay fuente fiable para el estado anterior. */
-  datosAnteriores: null;
+  /** IMAGEN PREVIA del registro (estado ANTERIOR); `null` si no se pudo leer. */
+  datosAnteriores: Record<string, unknown> | null;
   datosNuevos: Record<string, unknown> | null;
 }
 
@@ -154,7 +190,7 @@ type JsonRedactado =
 export class AuditInterceptor implements NestInterceptor {
   constructor(private readonly prisma: PrismaService) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+  async intercept(context: ExecutionContext, next: CallHandler): Promise<Observable<unknown>> {
     const req = context.switchToHttp().getRequest();
     if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) {
       return next.handle();
@@ -166,19 +202,27 @@ export class AuditInterceptor implements NestInterceptor {
     // interceptor corre después de los pipes, así que `req.body` ya está
     // validado/normalizado.
     const datosNuevos = this.snapshotRedactado(req.body);
+    // IMAGEN PREVIA: estado de la fila ANTES del handler. Se lee aquí —y no en
+    // cada servicio— y se espera antes de `next.handle()`, que es justo lo que
+    // permite rellenar `datosAnteriores` sin tocar ningún servicio. Nunca
+    // lanza: si la lectura falla, se sigue con `null`.
+    const datosAnteriores = await this.imagenPreviaDe(req);
     return next.handle().pipe(
       tap({
         // Un handler que termina sin lanzar es un éxito, sin excepciones.
-        next: () => void this.registrar(req, 'SUCCESS', datosNuevos).catch(() => undefined),
+        next: () =>
+          void this.registrar(req, 'SUCCESS', datosNuevos, datosAnteriores).catch(() => undefined),
         // Cualquier error es FAILURE: antes se registraba como SUCCESS salvo
         // 404/403, de modo que un 401 por fuerza bruta o un 500 quedaban como
         // éxito. El acceso cruzado se distingue por la marca del error, no por
-        // el código HTTP.
+        // el código HTTP. La imagen previa se guarda TAMBIÉN en el error: el
+        // estado anterior es más útil, si cabe, cuando algo falla.
         error: (e: unknown) =>
           void this.registrar(
             req,
             'FAILURE',
             datosNuevos,
+            datosAnteriores,
             this.motivoDe(e),
             this.esAccesoCruzado(e) ? this.mensajeDe(e) : undefined,
           ).catch(() => undefined),
@@ -222,6 +266,7 @@ export class AuditInterceptor implements NestInterceptor {
     req: Record<string, unknown>,
     resultado: ResultadoAuditoria,
     datosNuevos: Record<string, unknown> | null,
+    datosAnteriores: Record<string, unknown> | null,
     motivo?: string,
     detalle?: string,
   ): Promise<void> {
@@ -229,7 +274,7 @@ export class AuditInterceptor implements NestInterceptor {
     const headers = this.headersDe(req);
     const db = this.prisma as unknown as ClienteAuditoria;
     const url = String((req.originalUrl ?? req.url ?? '').toString()).slice(0, 200);
-    const tabla = this.tablaDe(url);
+    const tabla = this.recursoDe(url);
     const registroId = this.registroDe(url);
 
     // Rutas de plataforma → PlatformAuditLog (sin tenant); resto → Auditoria.
@@ -259,10 +304,12 @@ export class AuditInterceptor implements NestInterceptor {
       resultado,
       ip: (req.ip as string) ?? null,
       userAgent: headers['user-agent'] ?? null,
-      // No se puede reconstruir el estado anterior sin una imagen previa por
-      // servicio (leer la fila antes del update exigiría tocar cada servicio y
-      // la propia extensión multi-tenant). Se deja `null` de forma explícita.
-      datosAnteriores: null,
+      // Imagen previa capturada por el propio interceptor ANTES del handler
+      // (`imagenPreviaDe`): describe el estado anterior y se guarda tanto en
+      // éxito como en error. Es `null` si no había recurso identificable, si el
+      // registro no existe, si la lectura falló o si la fila NO pertenece al
+      // tenant validado (nunca se filtra a la auditoría un dato de otro tenant).
+      datosAnteriores,
       datosNuevos: this.datosConMotivo(resultado, datosNuevos, motivo, detalle),
     };
     await db.auditoria.create({ data: fila });
@@ -322,6 +369,12 @@ export class AuditInterceptor implements NestInterceptor {
     if (typeof valor === 'number' || typeof valor === 'boolean') return valor;
     if (typeof valor === 'bigint') return valor.toString();
     if (valor instanceof Date) return valor.toISOString();
+    // Prisma entrega las columnas `Decimal` como objetos Decimal.js: sin esta
+    // rama, la imagen previa volcaría su representación interna (`s`/`e`/`d`)
+    // en lugar del importe. Se resuelve con la MISMA política de redacción.
+    if (typeof (valor as { toFixed?: unknown }).toFixed === 'function') {
+      return this.truncar(String(valor));
+    }
     if (Array.isArray(valor)) {
       if (profundidad >= MAX_PROFUNDIDAD) return '[PROFUNDIDAD_MAXIMA]';
       return valor.slice(0, 100).map((v) => this.redactar(v, profundidad + 1));
@@ -350,9 +403,92 @@ export class AuditInterceptor implements NestInterceptor {
       : texto;
   }
 
-  private tablaDe(url: string): string {
+  /**
+   * `true` si la petición puede tener una fila ANTERIOR que leer: `PATCH`,
+   * `PUT` y `DELETE` siempre; `POST` solo cuando la ruta declara `:id` (p. ej.
+   * `POST /pacientes/:id/documentos`). Un `POST` de creación no tiene estado
+   * anterior que capturar.
+   */
+  private esMutacionConRecurso(req: Record<string, unknown>): boolean {
+    const metodo = String(req.method ?? '').toUpperCase();
+    if (metodo === 'PATCH' || metodo === 'PUT' || metodo === 'DELETE') return true;
+    if (metodo !== 'POST') return false;
+    const ruta = (req.route as { path?: unknown } | undefined)?.path;
+    if (typeof ruta === 'string' && ruta.includes(':id')) return true;
+    // Respaldo: `req.params` solo trae `id` si la ruta lo declara.
+    return this.idDe(req) !== null;
+  }
+
+  /** `id` de la ruta (`req.params.id`), o `null` si no hay. */
+  private idDe(req: Record<string, unknown>): string | null {
+    const params = req.params as Record<string, unknown> | undefined;
+    const id = params?.id;
+    return typeof id === 'string' && id.trim() !== '' ? id : null;
+  }
+
+  /**
+   * `Auditoria.tabla`: el recurso de la ruta (`/api/<recurso>/...`), que es la
+   * MISMA clave con la que `MODELO_POR_RECURSO` localiza el modelo Prisma. Un
+   * solo sitio para la correspondencia, sin tablas paralelas.
+   */
+  private recursoDe(url: string): string {
     const m = url.match(/\/api\/([a-z]+)/);
     return m ? m[1] : 'desconocida';
+  }
+
+  /** Modelo Prisma del recurso (`MODELO_POR_RECURSO`), o `null` si no aplica. */
+  private modeloDe(url: string): string | null {
+    return MODELO_POR_RECURSO[this.recursoDe(url)] ?? null;
+  }
+
+  /**
+   * IMAGEN PREVIA: estado de la fila que el handler va a mutar, leído ANTES de
+   * que se ejecute. Es la fuente de `Auditoria.datosAnteriores` y evita tocar
+   * cada servicio.
+   *
+   * Se pasa por la MISMA `redactar` que `datosNuevos`: una sola política de
+   * redacción (secretos → `[REDACTADO]`, cadenas truncadas, profundidad
+   * acotada).
+   *
+   * Devuelve `null` —sin lanzar nunca, la auditoría no puede tumbar la
+   * petición— cuando:
+   *  - la petición no es una mutación con recurso identificable;
+   *  - el recurso no está en `MODELO_POR_RECURSO` o no hay `id` en la ruta;
+   *  - no hay tenant VALIDADO en el contexto (no se podría comprobar nada);
+   *  - el registro no existe o la lectura falla;
+   *  - la fila pertenece a OTRO tenant: `findUnique` por id NO pasa por la
+   *    extensión de aislamiento, así que la pertenencia se verifica aquí y, si
+   *    no coincide, no se persiste ni un dato ajeno.
+   */
+  private async imagenPreviaDe(
+    req: Record<string, unknown>,
+  ): Promise<Record<string, unknown> | null> {
+    if (!this.esMutacionConRecurso(req)) return null;
+    const url = String((req.originalUrl ?? req.url ?? '').toString());
+    const modelo = this.modeloDe(url);
+    if (!modelo) return null;
+    const id = this.idDe(req);
+    if (!id) return null;
+    // Tenant del contexto SOLO si el guard lo validó: una ruta @Public no lee
+    // imágenes previas (no hay sesión a la que atribuir la fila).
+    const tenantEsperado = this.tenantValidado(tenantContext.getStore());
+    if (!tenantEsperado) return null;
+    try {
+      const db = this.prisma as unknown as Record<string, DelegadoLectura | undefined>;
+      const delegado = db[modelo];
+      if (!delegado) return null;
+      const fila = await delegado.findUnique({ where: { id } });
+      if (!fila || fila.tenantId !== tenantEsperado) return null;
+      const redactada = this.redactar(fila, 0);
+      if (redactada === null || typeof redactada !== 'object' || Array.isArray(redactada)) {
+        return null;
+      }
+      return redactada as Record<string, unknown>;
+    } catch {
+      // Registro inexistente, error de BD, modelo no expuesto: sin imagen
+      // previa y la petición sigue su curso.
+      return null;
+    }
   }
 
   private registroDe(url: string): string {

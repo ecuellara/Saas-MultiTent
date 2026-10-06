@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { StorageService } from '../../core/storage/storage.service.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
@@ -34,6 +35,32 @@ export interface DocumentoDescarga {
   /** MIME verificado contra la firma real del contenido en disco. */
   mimeType: string;
 }
+
+/**
+ * Archivo recibido por multipart.
+ *
+ * Se declara aquí en lugar de usar `Express.Multer.File` para no depender de
+ * `@types/multer`, que no está instalado en el proyecto: `FileInterceptor` usa
+ * `memoryStorage` **por defecto**, de modo que lo único que necesitamos es el
+ * `buffer`, el `size` real y el nombre original.
+ */
+export interface ArchivoSubido {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
+
+/** Tipos de documento admitidos al SUBIR bytes (los documentados en el esquema). */
+const TIPOS_DOCUMENTO = new Set([
+  'RX_PANORAMICA',
+  'RX_PERIAPICAL',
+  'FOTO',
+  'CONSENTIMIENTO',
+  'RECETA',
+  'INFORME',
+  'OTRO',
+]);
 
 @Injectable()
 export class PacientesService {
@@ -137,6 +164,93 @@ export class PacientesService {
         storageKey,
       },
     });
+  }
+
+  /**
+   * Sube el ARCHIVO de un documento (a diferencia de `registrarDocumento`, que
+   * sólo guarda metadatos y dejaba el flujo clínico a medias: se podía registrar
+   * una radiografía, pero no adjuntarla nunca).
+   *
+   * Todo lo que decide el cliente se desconfía:
+   * - el **tipo** se determina por el CONTENIDO (magic bytes), no por el
+   *   `mimetype` declarado en el multipart;
+   * - el **tamaño** sale de `file.size` (real), no de un campo del formulario;
+   * - la **clave** la construye el servidor con el `tenantId` del contexto.
+   */
+  async subirDocumento(
+    id: string,
+    archivo: ArchivoSubido | undefined,
+    tipo: string,
+  ): Promise<Record<string, unknown>> {
+    const ctx = requireTenant();
+    const paciente = await this.obtener(id);
+
+    if (!archivo || !Buffer.isBuffer(archivo.buffer)) {
+      throw new BadRequestException('Falta el archivo');
+    }
+    if (!TIPOS_DOCUMENTO.has(tipo)) {
+      throw new BadRequestException('Tipo de documento no permitido');
+    }
+    if (archivo.size <= 0) {
+      throw new BadRequestException('El archivo está vacío');
+    }
+    if (archivo.size > StorageService.MAX_KB * 1024) {
+      throw new BadRequestException('Archivo demasiado grande');
+    }
+
+    // El tipo lo decide el contenido, no lo que declare el cliente: un HTML
+    // renombrado a .png se rechaza aquí y no llega nunca al disco.
+    const detectado = this.storage.firmarMime(archivo.buffer);
+    if (!detectado) {
+      throw new BadRequestException('El contenido no es un tipo de archivo permitido');
+    }
+
+    // Nombre saneado: sin separadores (evita anidar rutas) ni `..`, y acotado.
+    const nombreSeguro = (archivo.originalname || 'archivo')
+      .replace(/[\\/]/g, '_')
+      .replace(/\.\./g, '')
+      .slice(0, 120);
+    const storageKey = this.storage.construirClave(
+      ctx.tenantId,
+      'patients',
+      paciente.id as string,
+      'documents',
+      `${randomUUID()}-${nombreSeguro}`,
+    );
+
+    await this.storage.escribirLocal(ctx.tenantId, storageKey, archivo.buffer);
+
+    try {
+      return await this.db.documentoPaciente.create({
+        data: {
+          tenantId: ctx.tenantId,
+          pacienteId: id,
+          nombreArchivo: archivo.originalname || 'archivo',
+          tipo,
+          // Se persiste el MIME DETECTADO, no el declarado: lo que se sirva
+          // después debe coincidir con lo que la fila afirma.
+          mimeType: detectado,
+          tamanioKb: Math.max(1, Math.ceil(archivo.size / 1024)),
+          storageKey,
+        },
+        // La `storageKey` no se expone (es una ruta interna del almacenamiento).
+        select: {
+          id: true,
+          pacienteId: true,
+          nombreArchivo: true,
+          tipo: true,
+          mimeType: true,
+          tamanioKb: true,
+          createdAt: true,
+        },
+      });
+    } catch (e) {
+      // Compensación: el archivo ya está en disco, así que si la fila no se crea
+      // quedaría huérfano (defecto que ya se detectó en la auditoría inicial del
+      // proyecto). Se borra y se propaga el error original.
+      await this.storage.eliminarLocal(storageKey).catch(() => undefined);
+      throw e;
+    }
   }
 
   /**
