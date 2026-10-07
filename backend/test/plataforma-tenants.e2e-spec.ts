@@ -32,7 +32,7 @@ type Db = {
     findUnique: (a: unknown) => Promise<{ id: string } | null>;
     deleteMany: (a: unknown) => Promise<unknown>;
   };
-  tenantConfig: { findUnique: (a: unknown) => Promise<{ nombre: string } | null> };
+  tenantConfig: { findUnique: (a: unknown) => Promise<{ nombre: string; ciudad: string } | null> };
   sede: { findMany: (a: unknown) => Promise<Array<{ nombre: string; esPrincipal: boolean }>> };
   role: {
     findFirst: (a: unknown) => Promise<{ id: string; esSistema: boolean } | null>;
@@ -62,6 +62,11 @@ const OWNER_EMAIL = 'owner-alta@test.pe';
 const OWNER_PASSWORD = 'Owner-Alta-2026!';
 const SLUG = 'clinica-alta-1';
 const DUENO_EMAIL = 'dueno@alta-1.pe';
+/** Slug y email PROPIOS de la prueba de ciudad: si reutilizara los de arriba,
+ *  consumiría el estado «libre» que necesita la prueba de validación del DTO
+ *  (el servicio comprueba slug/email antes que el plan). */
+const SLUG_CIUDAD = 'clinica-ciudad';
+const EMAIL_CIUDAD = 'dueno-ciudad@alta.pe';
 
 describe('Alta de clínicas', () => {
   let app: INestApplication;
@@ -77,8 +82,8 @@ describe('Alta de clínicas', () => {
     prisma = app.get(PrismaService);
     db = prisma as unknown as Db;
     await limpiarDosTenants(prisma);
-    await db.tenant.deleteMany({ where: { slug: { in: [SLUG, 'clinica-alta-2'] } } });
-    await db.user.deleteMany({ where: { email: { in: [DUENO_EMAIL, 'otro@alta.pe'] } } });
+    await db.tenant.deleteMany({ where: { slug: { in: [SLUG, 'clinica-alta-2', SLUG_CIUDAD] } } });
+    await db.user.deleteMany({ where: { email: { in: [DUENO_EMAIL, 'otro@alta.pe', EMAIL_CIUDAD] } } });
     await db.subscription.deleteMany({ where: { tenantId: { startsWith: 'ta-' } } });
     await db.plan.deleteMany({ where: { codigo: { in: ['consultorio', 'clinica'] } } });
     await db.platformAuditLog.deleteMany({});
@@ -112,8 +117,8 @@ describe('Alta de clínicas', () => {
 
   afterAll(async () => {
     if (prisma) {
-      await db.tenant.deleteMany({ where: { slug: { in: [SLUG, 'clinica-alta-2'] } } });
-      await db.user.deleteMany({ where: { email: { in: [DUENO_EMAIL, 'otro@alta.pe'] } } });
+      await db.tenant.deleteMany({ where: { slug: { in: [SLUG, 'clinica-alta-2', SLUG_CIUDAD] } } });
+      await db.user.deleteMany({ where: { email: { in: [DUENO_EMAIL, 'otro@alta.pe', EMAIL_CIUDAD] } } });
       await limpiarDosTenants(prisma);
       await db.subscription.deleteMany({ where: { tenantId: { startsWith: 'ta-' } } });
       await db.plan.deleteMany({ where: { codigo: { in: ['consultorio', 'clinica'] } } });
@@ -159,6 +164,30 @@ describe('Alta de clínicas', () => {
     expect(membership?.estado).toBe('ACTIVE');
     const sub = await db.subscription.findUnique({ where: { tenantId } });
     expect(sub?.estado).toBe('ACTIVE');
+  });
+
+  it('la ciudad es la que se indica, no la de la primera clínica', async () => {
+    // Regresión: el alta fijaba `ciudad: 'Huancayo'` a mano, así que TODA clínica
+    // nueva nacía con la ciudad de la primera, y esa ciudad sale impresa en los
+    // documentos del consultorio.
+    const srv = app.getHttpServer();
+    const r = await request(srv)
+      .post('/api/platform/tenants')
+      .set(PH)
+      .send(
+        altaBase({
+          slug: SLUG_CIUDAD,
+          nombre: 'Clínica Ciudad',
+          ciudad: 'Lima',
+          ownerEmail: EMAIL_CIUDAD,
+        }),
+      )
+      .expect(201);
+
+    const config = await db.tenantConfig.findUnique({ where: { tenantId: r.body.id as string } });
+    expect(config?.ciudad).toBe('Lima');
+    // Y el nombre de la configuración sigue siendo el de la clínica.
+    expect(config?.nombre).toBe('Clínica Ciudad');
   });
 
   it('slug o email existentes → 409, nunca 500', async () => {
@@ -217,12 +246,21 @@ describe('Alta de clínicas', () => {
     const ids = (sesion.body.tenants as Array<{ id: string }>).map((t) => t.id);
     const slugAlta = await db.tenant.findUnique({ where: { slug: SLUG } });
     expect(ids).toContain(slugAlta!.id);
-    // Y con el X-Tenant-Id del tenant nuevo opera (lista vacía, pero 200:
-    // la membresía ADMIN quedó bien enlazada).
+    // Y con el X-Tenant-Id del tenant nuevo opera: la lista es VACÍA (clínica
+    // recién creada) y, sobre todo, no ve nada de otra clínica.
     const HD = { ...H, 'X-Tenant-Id': slugAlta!.id };
     const lista = await request(srv).get('/api/pacientes').set(HD).expect(200);
     const cuerpo = Array.isArray(lista.body) ? lista.body : lista.body?.data;
     expect(Array.isArray(cuerpo)).toBe(true);
+    // La clínica A SÍ tiene un paciente (lo crea el fixture): si el aislamiento
+    // fallara, aparecería aquí. `Array.isArray` a secas no lo detectaría.
+    expect(cuerpo).toHaveLength(0);
+    // Leer por id un paciente de otra clínica: 404, nunca el dato.
+    await request(srv).get(`/api/pacientes/${datos.a.pacienteId}`).set(HD).expect(404);
+    // Y en la otra dirección: el admin de A no ve la clínica nueva en su sesión.
+    const sesionA = await request(srv).get('/api/auth/sesion').set(adminH).expect(200);
+    const idsA = (sesionA.body.tenants as Array<{ id: string }>).map((t) => t.id);
+    expect(idsA).not.toContain(slugAlta!.id);
     // En cambio, en plataforma NO existe: 404 y nunca sesión plena.
     const rp = await request(srv)
       .post('/api/platform/auth/login')

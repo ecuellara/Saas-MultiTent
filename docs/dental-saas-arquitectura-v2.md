@@ -277,10 +277,11 @@ frontend/src/
     └── EnConstruccionView.vue  # relleno de los módulos pendientes
 ```
 
-**Pendiente:** odontograma (editor gráfico), consentimientos, pagos, inventario,
-compras, usuarios, sedes y el `AdminLayout` del panel de plataforma. Las rutas ya
-están declaradas con su `meta.permiso`, así que sustituir `EnConstruccionView` por la
-vista real no obliga a tocar el enrutado ni el menú.
+**Pendiente:** odontograma (editor gráfico), consentimientos, inventario,
+compras, usuarios y sedes. Las rutas ya están declaradas con su `meta.permiso`,
+así que sustituir `EnConstruccionView` por la vista real no obliga a tocar el
+enrutado ni el menú. Hechos: pacientes, agenda, pagos (lista, detalle, alta
+con cuotas, abonos, anulación; botón «Cobrar» en la agenda) y panel `/admin`.
 
 **Regla de oro:** el frontend **oculta** lo no permitido; el backend **rechaza** lo no permitido.
 

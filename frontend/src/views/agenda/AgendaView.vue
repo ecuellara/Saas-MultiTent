@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import CitaFormModal from '../../components/citas/CitaFormModal.vue'
 import AvisoError from '../../components/ui/AvisoError.vue'
 import CargandoBloque from '../../components/ui/CargandoBloque.vue'
@@ -27,6 +28,7 @@ import { useSessionStore } from '../../stores/session'
  * número de pacientes crezca, esto se mueve al servidor con un `include`.
  */
 const sesion = useSessionStore()
+const router = useRouter()
 
 const fecha = ref(hoyLocal())
 const citas = ref<Cita[]>([])
@@ -40,6 +42,7 @@ const modalNueva = ref(false)
 const porCancelar = ref<Cita | null>(null)
 
 const puedeEscribir = computed(() => sesion.puede('appointments.write'))
+const puedeCobrar = computed(() => sesion.puede('payments.write'))
 
 const mapaPacientes = computed(() => new Map(pacientes.value.map((p) => [p.id, p])))
 const mapaTratamientos = computed(() => new Map(tratamientos.value.map((t) => [t.id, t.nombre])))
@@ -246,6 +249,15 @@ async function alCrear(): Promise<void> {
               @click="cambiarEstado(cita, 'no_asistio')"
             >
               No asistió
+            </button>
+            <button
+              v-if="puedeCobrar && cita.estado !== 'cancelada'"
+              type="button"
+              class="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-background-soft disabled:opacity-60"
+              :disabled="ocupada === cita.id"
+              @click="router.push({ name: 'pagos', query: { cita: cita.id } })"
+            >
+              Cobrar
             </button>
             <button
               v-if="cita.estado !== 'cancelada' && cita.estado !== 'realizada'"

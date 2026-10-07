@@ -124,6 +124,10 @@ selecciona sola y va al panel. Con más de una clínica aparece el selector.
   - **solapar** con una cita existente → «La cita se solapa con otra existente».
 
   Las cuatro las valida el backend; el formulario, además, no ofrece días anteriores a hoy.
+- **Pagos**: listado con buscador y filtro por estado, alta (total o parcial,
+  con detalle por tratamiento y plan de cuotas opcional), abonos hasta saldar
+  y anulación con confirmación. Desde cada cita no cancelada de la agenda, el
+  botón **Cobrar** abre el formulario ya vinculado a esa cita y su paciente.
 
 ## 6. Panel de plataforma
 

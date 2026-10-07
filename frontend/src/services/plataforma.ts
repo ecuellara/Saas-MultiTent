@@ -69,6 +69,7 @@ export interface ClinicaAlta {
   slug: string
   nombre: string
   razonSocial?: string
+  ciudad?: string
   planCodigo: string
   sedeNombre?: string
   ownerNombre: string

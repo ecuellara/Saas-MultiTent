@@ -99,8 +99,13 @@ const router = createRouter({
         {
           path: 'pagos',
           name: 'pagos',
-          component: EnConstruccion,
-          props: { titulo: 'Pagos', descripcion: 'Ingresos, egresos, abonos y cuotas.' },
+          component: () => import('../views/pagos/PagosView.vue'),
+          meta: { permiso: 'payments.write' },
+        },
+        {
+          path: 'pagos/:id',
+          name: 'pago-detalle',
+          component: () => import('../views/pagos/PagoDetalleView.vue'),
           meta: { permiso: 'payments.write' },
         },
         {

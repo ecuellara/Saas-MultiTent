@@ -136,6 +136,11 @@ export class CreateTenantDto {
   @IsString()
   razonSocial?: string;
 
+  @ApiPropertyOptional({ example: 'Lima' })
+  @IsOptional()
+  @IsString()
+  ciudad?: string;
+
   @ApiProperty({ example: 'clinica' })
   @IsString()
   @IsNotEmpty()
@@ -581,7 +586,15 @@ export class PlatformService {
           },
         });
         await t.tenantConfig.create({
-          data: { tenantId: tenant.id, nombre: dto.nombre, ciudad: 'Huancayo' },
+          // `ciudad` solo si viene: al omitirse aplica el valor por defecto del
+          // esquema. Antes se fijaba 'Huancayo' a mano, de modo que TODA clínica
+          // nueva nacía con la ciudad de la primera, y esa ciudad aparece en los
+          // documentos que se imprimen con los datos del consultorio.
+          data: {
+            tenantId: tenant.id,
+            nombre: dto.nombre,
+            ...(dto.ciudad ? { ciudad: dto.ciudad } : {}),
+          },
         });
         const sede = await t.sede.create({
           data: { tenantId: tenant.id, nombre: nombreSede, esPrincipal: true },

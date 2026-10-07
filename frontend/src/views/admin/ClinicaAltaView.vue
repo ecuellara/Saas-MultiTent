@@ -17,6 +17,7 @@ const form = ref({
   slug: '',
   nombre: '',
   razonSocial: '',
+  ciudad: '',
   planCodigo: 'clinica',
   sedeNombre: 'Sede principal',
   ownerNombre: '',
@@ -46,6 +47,7 @@ async function guardar(): Promise<void> {
       slug: form.value.slug.trim(),
       nombre: form.value.nombre.trim(),
       razonSocial: form.value.razonSocial.trim() || undefined,
+      ciudad: form.value.ciudad.trim() || undefined,
       planCodigo: form.value.planCodigo,
       sedeNombre: form.value.sedeNombre.trim() || undefined,
       ownerNombre: form.value.ownerNombre.trim(),
@@ -85,6 +87,10 @@ const campo = 'w-full rounded-md border border-line bg-background-soft px-3 py-2
           <label class="block text-sm">
             <span class="mb-1 block font-medium text-ink">Razón social (opcional)</span>
             <input v-model="form.razonSocial" :class="campo" />
+          </label>
+          <label class="block text-sm">
+            <span class="mb-1 block font-medium text-ink">Ciudad</span>
+            <input v-model="form.ciudad" placeholder="Lima" :class="campo" />
           </label>
           <label class="block text-sm">
             <span class="mb-1 block font-medium text-ink">Plan</span>
