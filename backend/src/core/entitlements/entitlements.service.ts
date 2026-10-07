@@ -64,7 +64,16 @@ export class EntitlementsService {
     };
     const sub = await db.subscription.findUnique({
       where: { tenantId },
-      include: { plan: { include: { features: true } } },
+      // Invariante 3: solo lo que usa el cálculo de entitlements.
+      select: {
+        estado: true,
+        plan: {
+          select: {
+            codigo: true,
+            features: { select: { clave: true, habilitado: true, limite: true } },
+          },
+        },
+      },
     });
     const valor: Entitlements | null = sub
       ? {

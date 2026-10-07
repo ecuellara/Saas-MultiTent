@@ -2,12 +2,11 @@
  * Contrato de validación de los módulos clínicos que faltaban: consentimientos,
  * odontograma (NTS 188) e insumos (inventario).
  *
- * POR QUÉ EXISTE: igual que `contrato-paciente` y `contrato-modulos`, los e2e
- * del proyecto montan la app con `Test.createTestingModule` + `setGlobalPrefix`
- * pero **no** aplican el `ValidationPipe` global de `main.ts`
- * (`whitelist` + `forbidNonWhitelisted` + `transform`) ni el
- * `GlobalExceptionFilter`. Sin ellos, un DTO mal declarado pasa desapercibido:
- * la validación real solo se ve al usar la aplicación.
+ * POR QUÉ EXISTE: igual que `contrato-paciente` y `contrato-modulos`, la app
+ * se monta con `montarAppE2E` (igual que `main.ts`: `whitelist` +
+ * `forbidNonWhitelisted` + `transform` + filtro global). Sin ellos, un DTO
+ * mal declarado pasa desapercibido: la validación real solo se ve al usar
+ * la aplicación.
  *
  * Lo que fija, y por qué importa:
  *  1. **Formato de fecha uniforme.** Un campo `DateTime`/`@db.Date` de Prisma
@@ -25,12 +24,12 @@
  *     (`inventory.write`, `consents.write`, `patients.write`) y contra un
  *     usuario de OTRA clínica, que no tiene vínculo con el tenant declarado.
  */
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
-import { GlobalExceptionFilter } from '../src/core/filters/global-exception.filter.js';
+import { montarAppE2E } from './helpers/app.e2e.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { PASSWORD_PLAIN, limpiarDosTenants, seedDosTenants, type DosTenants } from './helpers/tenants-fixture.js';
 
@@ -54,14 +53,7 @@ describe('Contrato de inventario clínico (consentimientos, odontograma e insumo
 
   beforeAll(async () => {
     const modulo = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = modulo.createNestApplication();
-    app.setGlobalPrefix('api');
-    // Misma configuración que `src/main.ts`.
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-    );
-    app.useGlobalFilters(new GlobalExceptionFilter());
-    await app.init();
+    app = await montarAppE2E(modulo);
 
     prisma = app.get(PrismaService);
     await limpiarDosTenants(prisma);

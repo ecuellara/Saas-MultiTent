@@ -8,6 +8,7 @@ import * as crypto from 'node:crypto';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
+import { montarAppE2E } from './helpers/app.e2e.js';
 import { canonico } from '../src/modules/facturacion/verificadores.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { PASSWORD_PLAIN, limpiarDosTenants, seedDosTenants, type DosTenants } from './helpers/tenants-fixture.js';
@@ -51,9 +52,7 @@ describe('Smoke Fase 8', () => {
     process.env.BILLING_HMAC_SECRET = 'secreto-hmac-pruebas-1234567890';
     process.env.BILLING_MP_SECRET = 'secreto-mp-pruebas-1234567890';
     const modulo = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = modulo.createNestApplication();
-    app.setGlobalPrefix('api');
-    await app.init();
+    app = await montarAppE2E(modulo);
     prisma = app.get(PrismaService);
     db = prisma as unknown as Db;
     await limpiarDosTenants(prisma);

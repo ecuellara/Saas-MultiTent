@@ -65,7 +65,19 @@ export class UsuariosService {
     };
     const u = await db.user.findUnique({
       where: { id },
-      include: { memberships: true },
+      // Invariante 3: se nombran solo los campos que necesita la respuesta.
+      // `passwordHash`, `passwordAlgo` y `mfaSecret` no salen de aquí (el
+      // destructuring de abajo es la segunda barrera, no la primera).
+      select: {
+        id: true, email: true, nombre: true, cop: true, estado: true,
+        mfaEnabled: true, lastLoginAt: true, createdAt: true, updatedAt: true,
+        memberships: {
+          select: {
+            id: true, tenantId: true, userId: true, roleId: true, sedeId: true,
+            estado: true, joinedAt: true,
+          },
+        },
+      },
     });
     const pertenece = (u?.memberships ?? []).some((m) => m.tenantId === ctx.tenantId);
     if (!u || !pertenece) throw new NotFoundException('Usuario no encontrado');
@@ -108,10 +120,19 @@ export class UsuariosService {
               create: { tenantId: ctx.tenantId, roleId: dto.roleId, sedeId: dto.sedeId },
             },
           },
-          include: { memberships: true },
+          // Invariante 3: sin `passwordHash`/`mfaSecret` desde la consulta.
+          select: {
+            id: true, email: true, nombre: true, cop: true, estado: true,
+            mfaEnabled: true, createdAt: true, updatedAt: true,
+            memberships: {
+              select: {
+                id: true, tenantId: true, userId: true, roleId: true, sedeId: true,
+                estado: true, joinedAt: true,
+              },
+            },
+          },
         });
-        const { passwordHash: _omit, mfaSecret: _omit2, ...seguro } = creado;
-        return seguro;
+        return creado;
       },
     );
   }

@@ -22,6 +22,7 @@ import * as bcrypt from 'bcrypt';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
+import { montarAppE2E } from './helpers/app.e2e.js';
 import { AuditInterceptor, CrossTenantError } from '../src/core/audit/audit.interceptor.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import {
@@ -151,9 +152,7 @@ describe('Auditoría (e2e)', () => {
 
   beforeAll(async () => {
     const modulo = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = modulo.createNestApplication();
-    app.setGlobalPrefix('api');
-    await app.init();
+    app = await montarAppE2E(modulo);
     prisma = app.get(PrismaService);
     db = prisma as unknown as Db;
 

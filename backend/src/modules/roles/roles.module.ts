@@ -54,7 +54,13 @@ export class RolesService {
     requireTenant();
     return this.db.role.findMany({
       where: { deletedAt: null },
-      include: { permisos: { include: { permission: true } } },
+      // Invariante 3: `select` explícito en la relación (nunca `include: true`).
+      select: {
+        id: true, tenantId: true, codigo: true, nombre: true, esSistema: true,
+        permisos: {
+          select: { permission: { select: { id: true, codigo: true, recurso: true, accion: true } } },
+        },
+      },
       orderBy: { codigo: 'asc' },
     } as unknown as object) as Promise<RoleRow[]>;
   }
@@ -63,7 +69,12 @@ export class RolesService {
     const ctx = requireTenant();
     const r = await this.db.role.findUnique({
       where: { id },
-      include: { permisos: { include: { permission: true } } },
+      select: {
+        id: true, tenantId: true, codigo: true, nombre: true, esSistema: true, deletedAt: true,
+        permisos: {
+          select: { permission: { select: { id: true, codigo: true, recurso: true, accion: true } } },
+        },
+      },
     } as unknown as object) as (RoleRow & { deletedAt?: Date | null }) | null;
     if (!r || r.tenantId !== ctx.tenantId || r.deletedAt) {
       throw new NotFoundException('Rol no encontrado');

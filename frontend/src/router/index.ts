@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { usePlataformaStore } from '../stores/plataforma'
 import { useSessionStore } from '../stores/session'
 
 declare module 'vue-router' {
@@ -7,6 +8,8 @@ declare module 'vue-router' {
     publico?: boolean
     /** Permiso exigido para entrar (el backend lo exige igualmente). */
     permiso?: string
+    /** Ruta del panel de plataforma: usa su propio store y guard. */
+    admin?: boolean
   }
 }
 
@@ -26,6 +29,35 @@ const router = createRouter({
       path: '/elegir-clinica',
       name: 'elegir-clinica',
       component: () => import('../views/auth/SeleccionClinicaView.vue'),
+    },
+    {
+      path: '/admin/login',
+      name: 'admin-login',
+      component: () => import('../views/admin/AdminLoginView.vue'),
+      meta: { publico: true, admin: true },
+    },
+    {
+      path: '/admin',
+      component: () => import('../layouts/AdminLayout.vue'),
+      meta: { admin: true },
+      children: [
+        { path: '', redirect: { name: 'admin-clinicas' } },
+        {
+          path: 'clinicas',
+          name: 'admin-clinicas',
+          component: () => import('../views/admin/ClinicasView.vue'),
+        },
+        {
+          path: 'clinicas/nueva',
+          name: 'admin-clinica-alta',
+          component: () => import('../views/admin/ClinicaAltaView.vue'),
+        },
+        {
+          path: 'clinicas/:id',
+          name: 'admin-clinica-detalle',
+          component: () => import('../views/admin/ClinicaDetalleView.vue'),
+        },
+      ],
     },
     {
       path: '/',
@@ -124,6 +156,20 @@ const router = createRouter({
  *  5. Falta el permiso → al panel (el backend lo rechazaría igualmente).
  */
 router.beforeEach(async (to) => {
+  // Rama de plataforma: área separada con sesión propia. No toca la sesión
+  // de clínica (ni siquiera la lee): mezclarlas filtraría `X-Tenant-Id` a
+  // rutas que van con `PlatformGuard`.
+  if (to.path.startsWith('/admin')) {
+    const plataforma = usePlataformaStore()
+    if (to.name === 'admin-login') {
+      return plataforma.autenticado ? { name: 'admin-clinicas' } : true
+    }
+    if (!plataforma.autenticado) {
+      return { name: 'admin-login', query: { destino: to.fullPath } }
+    }
+    return true
+  }
+
   const sesion = useSessionStore()
 
   if (to.meta.publico) {

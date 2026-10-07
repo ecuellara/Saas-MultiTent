@@ -1,8 +1,8 @@
 import { Body, Controller, Get, Headers, HttpCode, Ip, Param, Patch, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { BadRequestException, Injectable, Module, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, Module, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { IsDateString, IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import { IsDateString, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 import type { Request, Response } from 'express';
 import { generarCodigoTotp, generarSecretoTotp, urlOtpauth, verificarTotp } from '../../core/auth/totp.js';
 import { Platform } from '../../core/auth/platform.decorator.js';
@@ -18,6 +18,7 @@ import { PermitirAltaMfa, PlatformGuard, PlatformRoles } from '../../core/guards
 import { EntitlementsService } from '../../core/entitlements/entitlements.service.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { LoginDto } from '../auth/login.dto.js';
+import { CATALOGO_PERMISOS } from '../../core/catalogo/permisos.js';
 import {
   CookieSpec,
   TokenPair,
@@ -111,6 +112,58 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsString()
   nombre?: string;
+}
+
+/**
+ * Alta completa de clínica (Fase 6 §14).
+ *
+ * DTO como CLASE con decoradores (invariante 2): un objeto literal haría que
+ * el ValidationPipe no validara nada (metatipo `Object`).
+ */
+export class CreateTenantDto {
+  @ApiProperty({ example: 'clinica-norte' })
+  @IsString()
+  @Matches(/^[a-z0-9-]{3,40}$/, { message: 'slug debe ser minúsculas, números y guiones (3-40)' })
+  slug!: string;
+
+  @ApiProperty({ example: 'Clínica Norte' })
+  @IsString()
+  @IsNotEmpty()
+  nombre!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  razonSocial?: string;
+
+  @ApiProperty({ example: 'clinica' })
+  @IsString()
+  @IsNotEmpty()
+  planCodigo!: string;
+
+  @ApiPropertyOptional({ example: 'Sede principal' })
+  @IsOptional()
+  @IsString()
+  sedeNombre?: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  ownerNombre!: string;
+
+  @ApiProperty()
+  @IsEmail()
+  ownerEmail!: string;
+
+  @ApiProperty({ minLength: 12 })
+  @IsString()
+  @MinLength(12, { message: 'la contraseña del dueño debe tener al menos 12 caracteres' })
+  ownerPassword!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  ownerCop?: string;
 }
 
 /** Resultado del login de plataforma: sesión plena, alta de MFA o MFA pendiente. */
@@ -404,8 +457,25 @@ export class PlatformService {
   }
 
   async tenants(): Promise<unknown> {
+    // Invariante 3: `select` explícito en toda relación (nunca `include: true`).
     return this.db.tenant.findMany({
-      include: { suscripcion: { include: { plan: true } } },
+      select: {
+        id: true, slug: true, nombre: true, razonSocial: true, estado: true,
+        createdAt: true, updatedAt: true, deletedAt: true,
+        suscripcion: {
+          select: {
+            id: true, tenantId: true, planId: true, estado: true, iniciadaEn: true,
+            periodoInicio: true, periodoFin: true, canceladaEn: true,
+            createdAt: true, updatedAt: true,
+            plan: {
+              select: {
+                id: true, codigo: true, nombre: true, descripcion: true,
+                precioMensual: true, moneda: true, activo: true,
+              },
+            },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     } as unknown as object);
   }
@@ -413,7 +483,29 @@ export class PlatformService {
   async tenant(id: string): Promise<unknown> {
     const t = await this.db.tenant.findUnique({
       where: { id },
-      include: { suscripcion: { include: { plan: true } }, sedes: true },
+      select: {
+        id: true, slug: true, nombre: true, razonSocial: true, estado: true,
+        createdAt: true, updatedAt: true, deletedAt: true,
+        suscripcion: {
+          select: {
+            id: true, tenantId: true, planId: true, estado: true, iniciadaEn: true,
+            periodoInicio: true, periodoFin: true, canceladaEn: true,
+            createdAt: true, updatedAt: true,
+            plan: {
+              select: {
+                id: true, codigo: true, nombre: true, descripcion: true,
+                precioMensual: true, moneda: true, activo: true,
+              },
+            },
+          },
+        },
+        sedes: {
+          select: {
+            id: true, tenantId: true, nombre: true, direccion: true, telefono: true,
+            esPrincipal: true, createdAt: true, deletedAt: true,
+          },
+        },
+      },
     } as unknown as object);
     if (!t) throw new NotFoundException('Tenant no encontrado');
     return t;
@@ -425,9 +517,135 @@ export class PlatformService {
     return this.db.tenant.update({ where: { id }, data: dto });
   }
 
+  /**
+   * Alta completa de clínica EN UNA TRANSACCIÓN (Fase 6 §14): Tenant +
+   * TenantConfig + Sede principal + Rol ADMIN (permisos del catálogo) + User
+   * dueño (clave por parámetro, nunca por defecto — bloqueador #2) +
+   * Membership + Subscription al plan indicado.
+   *
+   * Sobre `crearConLimite`: ese patrón serializa altas DENTRO de un tenant ya
+   * existente (lock de su fila). Aquí el tenant aún no existe, así que no hay
+   * fila que bloquear; la atomicidad la da esta única transacción y el primer
+   * miembro no puede superar ningún límite. Los límites rigen desde la
+   * siguiente alta (vía `MembershipsService`/`UsuariosService`).
+   *
+   * Conflictos de slug/email → 409, nunca 500: se comprueba antes y, por la
+   * carrera entre comprobación e inserción, el `P2002` también se traduce.
+   */
+  async crearTenant(dto: CreateTenantDto): Promise<Record<string, unknown>> {
+    try {
+      validarPassword(dto.ownerPassword);
+    } catch (e) {
+      throw new BadRequestException((e as Error).message);
+    }
+    const slugEnUso = await this.db.tenant.findUnique({ where: { slug: dto.slug } });
+    if (slugEnUso) throw new ConflictException('Slug en uso');
+    const emailEnUso = await this.db.user.findUnique({ where: { email: dto.ownerEmail } });
+    if (emailEnUso) throw new ConflictException('Email en uso');
+    const planes = (await this.db.plan.findMany({ where: { codigo: dto.planCodigo } } as unknown as object)) as Array<{
+      id: string;
+    }>;
+    const plan = planes[0];
+    if (!plan) throw new BadRequestException('Plan desconocido');
+    const permisos = (await this.db.permission.findMany({
+      where: { codigo: { in: CATALOGO_PERMISOS.map((p) => p.codigo) } },
+    } as unknown as object)) as Array<{ id: string }>;
+    if (permisos.length !== CATALOGO_PERMISOS.length) {
+      throw new InternalServerErrorException('Catálogo de permisos incompleto: ejecute db:seed');
+    }
+
+    const passwordHash = await hashPassword(dto.ownerPassword);
+    const ahora = new Date();
+    const fin = new Date(ahora);
+    fin.setDate(fin.getDate() + 30);
+    const nombreSede = dto.sedeNombre?.trim() || 'Sede principal';
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const t = tx as unknown as {
+          tenant: { create: (a: unknown) => Promise<{ id: string }> };
+          tenantConfig: { create: (a: unknown) => Promise<unknown> };
+          sede: { create: (a: unknown) => Promise<{ id: string }> };
+          role: { create: (a: unknown) => Promise<{ id: string }> };
+          rolePermission: { createMany: (a: unknown) => Promise<unknown> };
+          user: { create: (a: unknown) => Promise<{ id: string; email: string }> };
+          membership: { create: (a: unknown) => Promise<unknown> };
+          subscription: { create: (a: unknown) => Promise<unknown> };
+        };
+        const tenant = await t.tenant.create({
+          data: {
+            slug: dto.slug,
+            nombre: dto.nombre,
+            razonSocial: dto.razonSocial ?? null,
+            estado: 'ACTIVE',
+          },
+        });
+        await t.tenantConfig.create({
+          data: { tenantId: tenant.id, nombre: dto.nombre, ciudad: 'Huancayo' },
+        });
+        const sede = await t.sede.create({
+          data: { tenantId: tenant.id, nombre: nombreSede, esPrincipal: true },
+        });
+        const role = await t.role.create({
+          data: { tenantId: tenant.id, codigo: 'ADMIN', nombre: 'Administrador', esSistema: true },
+        });
+        await t.rolePermission.createMany({
+          data: permisos.map((p) => ({ roleId: role.id, permissionId: p.id })),
+        });
+        const owner = await t.user.create({
+          data: {
+            email: dto.ownerEmail,
+            passwordHash,
+            passwordAlgo: 'argon2id',
+            nombre: dto.ownerNombre,
+            cop: dto.ownerCop ?? null,
+          },
+        });
+        await t.membership.create({
+          data: { tenantId: tenant.id, userId: owner.id, roleId: role.id, sedeId: sede.id },
+        });
+        await t.subscription.create({
+          data: {
+            tenantId: tenant.id,
+            planId: plan.id,
+            estado: 'ACTIVE',
+            periodoInicio: ahora,
+            periodoFin: fin,
+          },
+        });
+        // Respuesta explícita, sin hashes ni secretos (invariante 3).
+        return {
+          id: tenant.id,
+          slug: dto.slug,
+          nombre: dto.nombre,
+          sede: { id: sede.id, nombre: nombreSede },
+          owner: { id: owner.id, email: owner.email },
+          plan: dto.planCodigo,
+        };
+      });
+    } catch (e) {
+      if (
+        e !== null &&
+        typeof e === 'object' &&
+        'code' in e &&
+        (e as { code: string }).code === 'P2002'
+      ) {
+        throw new ConflictException('Slug o email en uso');
+      }
+      throw e;
+    }
+  }
+
   async planes(): Promise<unknown> {
     return this.db.plan.findMany({
-      include: { features: true },
+      select: {
+        id: true, codigo: true, nombre: true, descripcion: true,
+        precioMensual: true, moneda: true, activo: true,
+        createdAt: true, updatedAt: true,
+        features: {
+          select: { id: true, planId: true, clave: true, habilitado: true, limite: true },
+        },
+      },
       orderBy: { precioMensual: 'asc' },
     } as unknown as object);
   }
@@ -480,7 +698,23 @@ export class PlatformService {
   async exportar(tenantId: string): Promise<Record<string, unknown>> {
     const t = await this.db.tenant.findUnique({
       where: { id: tenantId },
-      include: { suscripcion: { include: { plan: true } } },
+      select: {
+        id: true, slug: true, nombre: true, razonSocial: true, estado: true,
+        createdAt: true, updatedAt: true, deletedAt: true,
+        suscripcion: {
+          select: {
+            id: true, tenantId: true, planId: true, estado: true, iniciadaEn: true,
+            periodoInicio: true, periodoFin: true, canceladaEn: true,
+            createdAt: true, updatedAt: true,
+            plan: {
+              select: {
+                id: true, codigo: true, nombre: true, descripcion: true,
+                precioMensual: true, moneda: true, activo: true,
+              },
+            },
+          },
+        },
+      },
     } as unknown as object);
     if (!t) throw new NotFoundException('Tenant no encontrado');
     const db = this.prisma as unknown as Record<
@@ -658,6 +892,14 @@ export class PlatformController {
   @Patch('tenants/:id')
   actualizarTenant(@Param('id') id: string, @Body() dto: UpdateTenantDto): Promise<unknown> {
     return this.service.actualizarTenant(id, dto);
+  }
+
+  /** Solo `owner`: alta completa de clínica en una transacción (Fase 6 §14). */
+  @PlatformRoles('owner')
+  @Post('tenants')
+  @HttpCode(201)
+  crearTenant(@Body() dto: CreateTenantDto): Promise<unknown> {
+    return this.service.crearTenant(dto);
   }
 
   @Get('tenants/:id/metricas')

@@ -240,7 +240,8 @@ export class AuthService {
     const db = this.prisma as unknown as DbSesion;
     const filas = await db.rolePermission.findMany({
       where: { roleId },
-      include: { permission: true },
+      // Invariante 3: solo el código viaja (nunca la fila completa).
+      select: { permission: { select: { codigo: true } } },
     });
     return filas.map((f) => f.permission.codigo);
   }

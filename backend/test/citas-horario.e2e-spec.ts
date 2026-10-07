@@ -18,12 +18,12 @@
  * servidor en UTC pasa con o sin el fallo; en un huso negativo solo pasa con la
  * corrección. Ejecutar esta suite con `TZ=America/Lima` reproduce el entorno real.
  */
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
-import { GlobalExceptionFilter } from '../src/core/filters/global-exception.filter.js';
+import { montarAppE2E } from './helpers/app.e2e.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { PASSWORD_PLAIN, limpiarDosTenants, seedDosTenants, type DosTenants } from './helpers/tenants-fixture.js';
 
@@ -91,13 +91,7 @@ describe('Reglas de agenda (horario, descansos y pasado)', () => {
 
   beforeAll(async () => {
     const modulo = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = modulo.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-    );
-    app.useGlobalFilters(new GlobalExceptionFilter());
-    await app.init();
+    app = await montarAppE2E(modulo);
 
     prisma = app.get(PrismaService);
     await limpiarDosTenants(prisma);

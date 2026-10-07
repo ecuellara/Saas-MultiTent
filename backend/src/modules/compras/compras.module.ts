@@ -78,7 +78,22 @@ export class ComprasService {
     const db = this.prisma as unknown as {
       compra: { findUnique: (a: unknown) => Promise<CompraRow | null> };
     };
-    const c = await db.compra.findUnique({ where: { id }, include: { detalles: true } } as unknown as object);
+    // Invariante 3: `select` explícito también en las relaciones (nunca
+    // `include: { x: true }`): lo que no se nombra no viaja al cliente.
+    const c = await db.compra.findUnique({
+      where: { id },
+      select: {
+        id: true, tenantId: true, proveedorId: true, sedeId: true, codigo: true,
+        fecha: true, montoTotal: true, estado: true, observacion: true, usuarioId: true,
+        createdAt: true,
+        detalles: {
+          select: {
+            id: true, tenantId: true, compraId: true, insumoId: true, cantidad: true,
+            precioUnit: true, subtotal: true,
+          },
+        },
+      },
+    } as unknown as object);
     if (!c || c.tenantId !== ctx.tenantId) throw new NotFoundException('Compra no encontrada');
     return c;
   }

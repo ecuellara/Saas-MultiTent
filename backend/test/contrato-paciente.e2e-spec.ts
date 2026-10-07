@@ -1,24 +1,22 @@
 /**
  * Contrato del formulario de paciente (frontend ⇄ backend).
  *
- * POR QUÉ EXISTE ESTE SPEC: los demás e2e montan la app con
- * `Test.createTestingModule` y `setGlobalPrefix('api')`, pero **no** aplican el
- * `ValidationPipe` global de `main.ts`. En producción ese pipe va con
- * `whitelist` + `forbidNonWhitelisted` + `transform`, y el formulario del
- * frontend envía el objeto COMPLETO (los campos vacíos como `null`). Un
- * desajuste con el DTO daría un 400 que ninguna prueba actual detectaría: se
- * vería solo al usar la aplicación.
+ * POR QUÉ EXISTE ESTE SPEC: la app se monta con `montarAppE2E` (igual que
+ * `main.ts`: `whitelist` + `forbidNonWhitelisted` + `transform` + filtro
+ * global), y el formulario del frontend envía el objeto COMPLETO (los campos
+ * vacíos como `null`). Un desajuste con el DTO daría un 400 que ninguna
+ * prueba con montaje parcial detectaría: se vería solo al usar la aplicación.
  *
  * Aquí se reproduce la configuración real (pipe + filtro global) y se envía
  * exactamente el cuerpo que construye `frontend/src/services/pacientes.ts`
  * (`aPayload()`).
  */
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
-import { GlobalExceptionFilter } from '../src/core/filters/global-exception.filter.js';
+import { montarAppE2E } from './helpers/app.e2e.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { PASSWORD_PLAIN, limpiarDosTenants, seedDosTenants, type DosTenants } from './helpers/tenants-fixture.js';
 
@@ -70,15 +68,7 @@ describe('Contrato del formulario de paciente', () => {
 
   beforeAll(async () => {
     const modulo = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = modulo.createNestApplication();
-    app.setGlobalPrefix('api');
-    // Misma configuración que `src/main.ts`: sin esto el spec no probaría el
-    // `forbidNonWhitelisted` que sí existe en producción.
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-    );
-    app.useGlobalFilters(new GlobalExceptionFilter());
-    await app.init();
+    app = await montarAppE2E(modulo);
 
     prisma = app.get(PrismaService);
     await limpiarDosTenants(prisma);

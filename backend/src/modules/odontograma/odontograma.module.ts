@@ -134,7 +134,27 @@ export class OdontogramaService {
     };
     const o = await db.odontograma.findUnique({
       where: { id },
-      include: { hallazgos: true, eventos: true },
+      // Invariante 3: relaciones con `select` explícito, nunca `include: true`.
+      select: {
+        id: true, tenantId: true, pacienteId: true, tipo: true, version: true,
+        estado: true, piezas: true, observaciones: true, fecha: true,
+        firmadoPor: true, firmadoEn: true, createdAt: true, updatedAt: true,
+        hallazgos: {
+          select: {
+            id: true, tenantId: true, odontogramaId: true, pieza: true, piezas: true,
+            hallazgoCodigo: true, superficies: true, estadoClinico: true, color: true,
+            material: true, tipoDetalle: true, especificaciones: true,
+            tratamientoId: true, citaId: true, activo: true, createdAt: true,
+          },
+        },
+        eventos: {
+          select: {
+            id: true, tenantId: true, odontogramaId: true, pieza: true,
+            estadoAnterior: true, estadoNuevo: true, tratamientoId: true, citaId: true,
+            fecha: true, observacion: true,
+          },
+        },
+      },
     } as unknown as object);
     if (!o || o.tenantId !== ctx.tenantId) throw new NotFoundException('Odontograma no encontrado');
     return o;

@@ -38,6 +38,43 @@ export class CreateProveedorDto {
   direccion?: string;
 }
 
+/**
+ * DTO de actualización como CLASE, nunca `Partial<CreateProveedorDto>`: un
+ * `Partial<T>` hace que `emitDecoratorMetadata` emita `Object` como metatipo
+ * y el ValidationPipe no valida nada (invariante 2).
+ */
+export class UpdateProveedorDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  nombre?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  ruc?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  contacto?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  telefono?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  direccion?: string;
+}
+
 type ProveedorRow = Record<string, unknown> & { id: string; tenantId: string };
 
 type Db = {
@@ -75,7 +112,7 @@ export class ProveedoresService {
     });
   }
 
-  async actualizar(id: string, dto: Partial<CreateProveedorDto>): Promise<ProveedorRow> {
+  async actualizar(id: string, dto: UpdateProveedorDto): Promise<ProveedorRow> {
     await this.obtener(id);
     const { tenantId: _ignored, ...resto } = dto as Record<string, unknown>;
     return this.db.proveedor.update({ where: { id }, data: resto });
@@ -105,7 +142,7 @@ export class ProveedoresController {
 
   @Patch(':id')
   @RequirePermission('inventory.write')
-  actualizar(@Param('id') id: string, @Body() dto: Partial<CreateProveedorDto>): Promise<unknown> {
+  actualizar(@Param('id') id: string, @Body() dto: UpdateProveedorDto): Promise<unknown> {
     return this.service.actualizar(id, dto);
   }
 }

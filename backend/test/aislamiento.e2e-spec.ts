@@ -23,6 +23,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
+import { montarAppE2E } from './helpers/app.e2e.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import {
   DosTenants,
@@ -42,9 +43,7 @@ describe('Aislamiento multi-tenant', () => {
 
   beforeAll(async () => {
     const modulo = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = modulo.createNestApplication();
-    app.setGlobalPrefix('api');
-    await app.init();
+    app = await montarAppE2E(modulo);
 
     prisma = app.get(PrismaService);
     await limpiarDosTenants(prisma);

@@ -127,8 +127,26 @@ selecciona sola y va al panel. Con más de una clínica aparece el selector.
 
 ## 6. Panel de plataforma
 
-Es otra aplicación distinta (se factura aparte). Se entra por API con el usuario
-de `npm run db:seed`:
+Es un área separada (`/admin`, con su propio layout y su propia sesión: no usa
+la sesión de clínica). Entra en <http://localhost:5173/admin/login> con el
+usuario de `npm run db:seed`:
+
+| Qué | Valor |
+|---|---|
+| Correo | `owner@demo.pe` |
+| Contraseña | `Plataforma-Demo-2026!` (la de `PLATFORM_OWNER_PASSWORD`) |
+
+La MFA es **obligatoria**: el primer login devuelve un temporal de alta, la
+pantalla muestra el secreto TOTP para enrolarlo en la app autenticadora, se
+confirma con un código de 6 dígitos y desde entonces cada login pide el código.
+
+Desde el panel se puede: ver la lista de clínicas, dar de **alta** una clínica
+completa (tenant + sede + rol ADMIN + dueño + suscripción, en una transacción),
+**suspender/reactivar**, **asignar plan**, ver **métricas** y descargar el
+**export** JSON por tenant.
+
+Por API directa también funciona (cabecera `Authorization: Bearer <token>`
+de plataforma, sin `X-Tenant-Id`):
 
 ```powershell
 $base = 'http://localhost:3000/api'
@@ -136,10 +154,6 @@ Invoke-RestMethod -Method Post -Uri "$base/platform/auth/login" `
   -ContentType 'application/json' `
   -Body (@{ email = 'owner@demo.pe'; password = 'Plataforma-Demo-2026!' } | ConvertTo-Json)
 ```
-
-La MFA es **obligatoria** en plataforma, así que la respuesta trae un
-`temp_token` y hay que enrolar el TOTP (`/platform/auth/mfa/setup` y
-`/platform/auth/mfa/confirm`). No hay interfaz gráfica todavía.
 
 ## 7. Pruebas automáticas
 
@@ -150,7 +164,7 @@ $env:JWT_SECRET   = "secreto-de-pruebas-de-al-menos-32-caracteres-ok"
 npx vitest run --config vitest.config.e2e.ts
 ```
 
-Son **149 pruebas** sobre una base de datos real (usan `dental_saas_test`, no
+Son **161 pruebas** sobre una base de datos real (usan `dental_saas_test`, no
 `dental_saas_dev`: no se pisan con tu entorno de desarrollo).
 
 Frontend:

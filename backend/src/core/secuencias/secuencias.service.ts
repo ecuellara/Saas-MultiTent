@@ -17,7 +17,7 @@ export class SecuenciasService {
 
   async siguienteCodigoRecibo(fecha = new Date()): Promise<string> {
     const ctx = requireTenant();
-    const prefijo = `REC-${fecha.getFullYear()}-`;
+    const prefijo = `REC-${fecha.getUTCFullYear()}-`;
     const db = this.prisma as unknown as {
       pago: { findMany: (a: unknown) => Promise<Array<{ codigoRecibo: string | null }>> };
     };
@@ -44,7 +44,7 @@ export class SecuenciasService {
 
   async siguienteCodigoCompra(fecha = new Date()): Promise<string> {
     const ctx = requireTenant();
-    const prefijo = `CMP-${fecha.getFullYear()}-`;
+    const prefijo = `CMP-${fecha.getUTCFullYear()}-`;
     const db = this.prisma as unknown as {
       compra: { findMany: (a: unknown) => Promise<Array<{ codigo: string | null }>> };
     };

@@ -93,10 +93,9 @@ type Db = {
 const MAYORIA_DE_EDAD = 18;
 
 /**
- * Edad en años cumplidos a la fecha de referencia. Se calcula con
- * componentes de fecha **locales** (misma convención que el resto del
- * backend, que usa `new Date(...)` local para columnas `@db.Date`), así que un
- * `fechaNac` con hora no desplaza el resultado por zona horaria.
+ * Edad en años cumplidos a la fecha de referencia. Se calcula con componentes
+ * **UTC**: `fechaNac` es una columna `@db.Date` (medianoche UTC) y leerla con
+ * getters locales desplaza el día en husos negativos (invariante 4).
  * Devuelve `null` si no hay fecha de nacimiento (dato desconocido).
  */
 export function calcularEdad(
@@ -106,9 +105,9 @@ export function calcularEdad(
   if (!fechaNac) return null;
   const n = new Date(fechaNac);
   if (Number.isNaN(n.getTime())) return null;
-  let edad = hoy.getFullYear() - n.getFullYear();
-  const mes = hoy.getMonth() - n.getMonth();
-  if (mes < 0 || (mes === 0 && hoy.getDate() < n.getDate())) edad -= 1;
+  let edad = hoy.getUTCFullYear() - n.getUTCFullYear();
+  const mes = hoy.getUTCMonth() - n.getUTCMonth();
+  if (mes < 0 || (mes === 0 && hoy.getUTCDate() < n.getUTCDate())) edad -= 1;
   return edad;
 }
 

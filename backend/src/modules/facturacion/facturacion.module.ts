@@ -98,7 +98,9 @@ export class BillingService {
     const plan = planes[0];
     if (!plan) throw new BadRequestException('Plan desconocido');
     const ahora = new Date();
-    const clave = `chk-${dto.tenantId}-${dto.planCodigo}-${ahora.getFullYear()}${String(ahora.getMonth() + 1).padStart(2, '0')}`;
+    // Año/mes en UTC (invariante 4): la clave de idempotencia no puede depender
+    // del huso horario del servidor.
+    const clave = `chk-${dto.tenantId}-${dto.planCodigo}-${ahora.getUTCFullYear()}${String(ahora.getUTCMonth() + 1).padStart(2, '0')}`;
     const existente = await this.db.cobroSuscripcion.findUnique({ where: { claveIdempotencia: clave } });
     if (existente) return existente;
     const dias = dto.dias ?? 30;

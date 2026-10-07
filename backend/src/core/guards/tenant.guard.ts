@@ -107,7 +107,8 @@ export class TenantGuard implements CanActivate {
     try {
       const rows = await db.rolePermission.findMany({
         where: { roleId: membership.roleId },
-        include: { permission: true },
+        // Invariante 3: solo el código viaja (nunca la fila completa).
+        select: { permission: { select: { codigo: true } } },
       });
       permissions = rows.map((r) => r.permission.codigo);
     } catch {
