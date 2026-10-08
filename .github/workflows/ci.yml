@@ -36,6 +36,14 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx prisma migrate deploy
       - run: npx vitest run --config vitest.config.e2e.ts --fileParallelism=false
+      # SIMULACRO de restauración: vuelca, restaura en una base de usar y tirar
+      # y compara filas. Un backup roto no se fusiona en silencio.
+      # Requiere cliente Postgres local (el servicio solo expone el servidor).
+      - run: sudo apt-get update -y && sudo apt-get install -y postgresql-client
+      - run: node scripts/prueba-restauracion.mjs
+        env:
+          PG_DUMP_BIN: pg_dump
+          PG_RESTORE_BIN: pg_restore
       # Arranque REAL del binario compilado. Cubre fallos que las pruebas no
       # pueden ver: transforman con Oxc (sí emite metadatos de decorador) y no
       # pasan por dist/main.js. Ver scripts/smoke-arranque.mjs.

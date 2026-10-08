@@ -14,6 +14,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed-demo": "tsx prisma/seed-demo.ts",
     "db:migrar-clinica": "tsx scripts/migrar-clinica.ts",
+    "db:backup": "node scripts/backup.mjs",
+    "db:restaurar": "node scripts/restaurar.mjs",
+    "db:prueba-restauracion": "node scripts/prueba-restauracion.mjs",
     "smoke:arranque": "npm run build && node scripts/smoke-arranque.mjs",
     "test:aislamiento": "vitest run --config vitest.config.e2e.ts --fileParallelism=false"
   },

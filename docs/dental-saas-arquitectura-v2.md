@@ -1482,6 +1482,9 @@ GET /health/version
 
 ## 12. Backups y recuperación
 
+> Procedimiento ejecutable: [docs/backups.md](backups.md) (scripts
+> `db:backup`, `db:restaurar` y `db:prueba-restauracion`, con simulacro en CI).
+
 - Backups automáticos de Supabase + PITR (si el plan lo permite).
 - Backup lógico adicional + backup de Storage.
 - **Prueba de restauración periódica documentada** (no checklist, ejecución real).

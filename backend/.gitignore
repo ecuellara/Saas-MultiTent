@@ -23,6 +23,8 @@ prisma/migrations/**/migration.sql.lock
 # para no excluir un eventual módulo src/ con ese nombre.
 /uploads/
 /storage/
+# Volcados de pg_dump (doc backups.md): nunca al repositorio.
+/backups/
 *.dump
 
 # IDE / SO
