@@ -24,6 +24,7 @@ import { spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
+  aplicarRetencion,
   ejecutar,
   exigirEnv,
   motorRespaldo,
@@ -114,7 +115,7 @@ async function main() {
   };
   await fs.writeFile(`${destinoAbs}.manifiesto.json`, `${JSON.stringify(manifiesto, null, 2)}\n`);
 
-  const borrados = await aplicarRetencion(dir, archivo);
+  const borrados = await aplicarRetencion(dir, archivo, '.dump');
   console.log(`Base de datos: ${baseDatos}`);
   console.log(`Volcado: ${archivo} (${contenido.length} bytes, sha256 ${sha256.slice(0, 12)}…)`);
   console.log(`Última migración: ${migracion}`);
@@ -137,27 +138,6 @@ function verificarVolcado(motor, envPg, ruta) {
   if (!listado.includes('_prisma_migrations')) {
     throw new Error('El volcado NO incluye _prisma_migrations: no es una copia válida');
   }
-}
-
-/** Borra volcados (y su manifiesto) más antiguos que el plazo. Nunca el recién creado. */
-async function aplicarRetencion(dir, recienCreado) {
-  const dias = Number(process.env.BACKUP_RETENCION_DIAS ?? 14);
-  if (!Number.isFinite(dias) || dias < 0) {
-    throw new Error('BACKUP_RETENCION_DIAS debe ser un número >= 0');
-  }
-  const limite = Date.now() - dias * 86_400_000;
-  const borrados = [];
-  const entradas = await fs.readdir(dir);
-  for (const e of entradas) {
-    if (!e.endsWith('.dump') || e === recienCreado) continue;
-    const ruta = path.join(dir, e);
-    const st = await fs.stat(ruta).catch(() => null);
-    if (!st || !st.isFile() || st.mtimeMs >= limite) continue;
-    await fs.unlink(ruta);
-    await fs.unlink(`${ruta}.manifiesto.json`).catch(() => undefined);
-    borrados.push(e);
-  }
-  return borrados;
 }
 
 main().catch((e) => {

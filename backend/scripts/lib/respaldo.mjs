@@ -173,3 +173,90 @@ export async function tablasPublicas(pool) {
   );
   return r.rows.map((x) => x.t);
 }
+
+// ============================================================
+// Archivos (respaldo de `uploads/`)
+// ============================================================
+
+import { createHash } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+
+/**
+ * Recorre un árbol y devuelve rutas RELATIVAS en estilo posix, separando
+ * ficheros y directorios (los tar listan los directorios con `/` final y hay
+ * que excluirlos del conteo de ficheros).
+ */
+export async function caminarArbol(raiz) {
+  const ficheros = [];
+  const directorios = [];
+  async function visitar(dir, rel) {
+    const entradas = await fs.readdir(dir, { withFileTypes: true });
+    for (const e of entradas) {
+      const relHijo = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        directorios.push(relHijo);
+        await visitar(path.join(dir, e.name), relHijo);
+      } else if (e.isFile()) {
+        const st = await fs.stat(path.join(dir, e.name));
+        ficheros.push({ rel: relHijo, bytes: st.size });
+      }
+      // Enlaces y especiales se ignoran: las claves de storage son regulares.
+    }
+  }
+  await visitar(raiz, '');
+  ficheros.sort((a, b) => (a.rel < b.rel ? -1 : 1));
+  directorios.sort();
+  return { ficheros, directorios };
+}
+
+/** sha256 hex de un archivo (por bloques: vale para radiografías grandes). */
+export async function sha256Archivo(ruta) {
+  const { createReadStream } = await import('node:fs');
+  return new Promise((resolve, reject) => {
+    const h = createHash('sha256');
+    const s = createReadStream(ruta);
+    s.on('error', reject);
+    s.on('data', (d) => h.update(d));
+    s.on('end', () => resolve(h.digest('hex')));
+  });
+}
+
+/**
+ * Agrupa rutas `tenants/<tenantId>/...` por tenant para el manifiesto.
+ * Lo que no cuelga de `tenants/` va a `_externo` (visible, sin nombres).
+ */
+export function agruparPorTenant(rels) {
+  const grupos = {};
+  for (const rel of rels) {
+    const partes = rel.split('/');
+    const clave = partes.length >= 3 && partes[0] === 'tenants' ? partes[1] : '_externo';
+    grupos[clave] = (grupos[clave] ?? 0) + 1;
+  }
+  return grupos;
+}
+
+/**
+ * Retención: borra los archivos con la extensión indicada más antiguos que el
+ * plazo, junto a su manifiesto `<archivo>.manifiesto.json`, sin tocar nunca
+ * el recién creado. Informa de lo borrado.
+ */
+export async function aplicarRetencion(dir, recienCreado, extension) {
+  const dias = Number(process.env.BACKUP_RETENCION_DIAS ?? 14);
+  if (!Number.isFinite(dias) || dias < 0) {
+    throw new Error('BACKUP_RETENCION_DIAS debe ser un número >= 0');
+  }
+  const limite = Date.now() - dias * 86_400_000;
+  const borrados = [];
+  const entradas = await fs.readdir(dir);
+  for (const e of entradas) {
+    if (!e.endsWith(extension) || e === recienCreado) continue;
+    const ruta = path.join(dir, e);
+    const st = await fs.stat(ruta).catch(() => null);
+    if (!st || !st.isFile() || st.mtimeMs >= limite) continue;
+    await fs.unlink(ruta);
+    await fs.unlink(`${ruta}.manifiesto.json`).catch(() => undefined);
+    borrados.push(e);
+  }
+  return borrados;
+}

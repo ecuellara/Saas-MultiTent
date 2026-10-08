@@ -103,10 +103,18 @@ async function main() {
       console.log(`  ${okMig ? 'OK  ' : 'FAIL'} ultimaMigracion: ${mA} vs ${mB}`);
       const totalFilas = Object.values(a).reduce((s, n) => s + n, 0);
       if (totalFilas === 0) {
-        // La mecánica quedó verificada (dump → restore → compare), pero con la
-        // base vacía la comparación no muerde: se avisa en voz alta.
-        console.log('  ADVERTENCIA: la base origen está vacía; el simulacro verificó');
-        console.log('  la mecánica, no contenido. Para morder hacen falta filas.');
+        // Con la base vacía la comparación no muerde: se FALLA salvo que sea
+        // intencionado. Un simulacro en verde que no compara nada es peor que no
+        // tenerlo, porque da la falsa impresión de que el respaldo está probado.
+        if (process.env.PERMITIR_SIMULACRO_VACIO === '1') {
+          console.log('  ADVERTENCIA: base vacía y PERMITIR_SIMULACRO_VACIO=1.');
+          console.log('  Se verificó la mecánica (volcado → restauración → migración), no el contenido.');
+        } else {
+          fallos++;
+          console.log('  FAIL la base origen está VACÍA: la comparación de filas no prueba nada.');
+          console.log('  Ejecuta los seeds (npm run db:seed && npm run db:seed-demo) o, si el vacío');
+          console.log('  es intencionado, exporta PERMITIR_SIMULACRO_VACIO=1.');
+        }
       }
     } finally {
       await origen.end();

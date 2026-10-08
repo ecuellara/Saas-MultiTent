@@ -17,6 +17,9 @@
     "db:backup": "node scripts/backup.mjs",
     "db:restaurar": "node scripts/restaurar.mjs",
     "db:prueba-restauracion": "node scripts/prueba-restauracion.mjs",
+    "archivos:backup": "node scripts/backup-archivos.mjs",
+    "archivos:restaurar": "node scripts/restaurar-archivos.mjs",
+    "archivos:prueba-restauracion": "node scripts/prueba-restauracion-archivos.mjs",
     "smoke:arranque": "npm run build && node scripts/smoke-arranque.mjs",
     "test:aislamiento": "vitest run --config vitest.config.e2e.ts --fileParallelism=false"
   },

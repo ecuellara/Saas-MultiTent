@@ -1,13 +1,14 @@
 # Copias de seguridad
 
-La base de datos es lo único irrecuperable: este documento describe qué se
-copia, dónde, cada cuánto y cómo se restaura. Todo lo de aquí está
-**ejecutado**, no es checklist.
+La base de datos y los archivos subidos son lo irrecuperable: este documento
+describe qué se copia, dónde, cada cuánto y cómo se restaura. Todo lo de aquí
+está **ejecutado**, no es checklist.
 
 > Medido el 2026-10-08 en local (PostgreSQL 16 en Docker, BD de pruebas con
 > 4658 filas de auditoría): volcado de **408 KB**, restauración en **2,9 s**,
-> simulacro completo en **3,7 s**. El RTO crece con el tamaño: hay que
-> re-medirlo cuando la base crezca.
+> simulacro completo en **3,7 s**. Archivos (6 ficheros, 111 KB):
+> paquete de **112 KB**, restauración en **0,1 s**. El RTO crece con el tamaño:
+> hay que re-medirlo cuando los datos crezcan.
 
 ---
 
@@ -21,10 +22,12 @@ copia, dónde, cada cuánto y cómo se restaura. Todo lo de aquí está
   mencionarla).
 - Cada volcado lleva al lado un manifiesto `<volcado>.manifiesto.json`: fecha,
   tamaño, `sha256`, base de datos y última migración aplicada.
-- **No** se copia: los archivos subidos (viven en Supabase Storage; ahí rigen
-  sus backups + PITR) ni los secretos (nunca viajan en el volcado).
+- **No** se copian los secretos: nunca viajan en el volcado.
 - En ningún log, nombre de archivo ni manifiesto aparece `DATABASE_URL`: solo
   el **nombre** de la base.
+- Los **archivos subidos** tienen su propio respaldo (ver §8): mismo
+  directorio, paquete `archivos-*.tar.gz` con el mismo árbol
+  `tenants/{tenantId}/...`.
 
 ## 2. Dónde y retención
 
@@ -109,3 +112,38 @@ contenido no exigible).
 
 `scripts/migrar-clinica.ts` exige `--backup-verificado <ruta>`: pásale el
 manifiesto (o el volcado) del backup que acabas de comprobar con el simulacro.
+
+---
+
+## 8. Archivos subidos (`uploads/`)
+
+Hoy viven en **disco local** (`StorageService` → `uploads/`, configurable con
+`UPLOADS_DIR`), no en almacenamiento de objetos: este respaldo es su única
+copia hasta que se migren a un bucket (sigue siendo la opción estratégica;
+ver deuda nº 13).
+
+```bash
+cd backend
+npm run archivos:backup               # empaqueta UPLOADS_DIR en BACKUP_DIR
+npm run archivos:restaurar -- --archivo <paquete> --destino <dir> --confirmo-restauracion
+npm run archivos:prueba-restauracion  # simulacro hermético (ver abajo)
+```
+
+- Paquete `archivos-AAAAMMDD-HHMMSS.tar.gz` con **exactamente** el árbol
+  `tenants/{tenantId}/...` (el mismo que espera la aplicación y la migración).
+- Verificación antes de darlo por bueno: `tar -tzf` debe listar el mismo
+  conjunto de ficheros empaquetado; el paquete defectuoso se elimina.
+- Manifiesto `<paquete>.manifiesto.json`: fecha, bytes, sha256, número de
+  ficheros, bytes sumados y **número de ficheros por tenant** (conteos, nunca
+  nombres ni rutas: nada de datos de pacientes).
+- Si no hay ficheros, **falla** (salvo `PERMITIR_SIMULACRO_VACIO=1`).
+- Retención con `BACKUP_RETENCION_DIAS`, igual que la base.
+- La restauración se niega si el destino es el `UPLOADS_DIR` en uso (o lo
+  solapa) y si ya tiene ficheros (salvo `--permitir-merge`); al terminar
+  informa ficheros y bytes.
+- Frecuencia: la misma que la base (mismo cron); el RPO es el mismo.
+
+**Simulacro hermético** (también en CI): crea fixtures binarios en un temporal
+propio, empaqueta, extrae en un directorio limpio y compara **sha256 por
+fichero** + bytes + conteos del manifiesto. Nunca toca el `uploads/` real y lo
+borra todo al terminar, pase o falle.
