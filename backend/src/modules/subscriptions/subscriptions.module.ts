@@ -1,5 +1,6 @@
 import { Body, Controller, ForbiddenException, Get, NotFoundException, Param, Patch } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
 import { Injectable, Module } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
@@ -36,6 +37,7 @@ export class SubscriptionsController {
   constructor(private readonly service: SubscriptionsService) {}
 
   @Get(':tenantId')
+  @RequirePermission('payments.read')
   obtener(@Param('tenantId') tenantId: string): Promise<unknown> {
     return this.service.obtener(tenantId);
   }

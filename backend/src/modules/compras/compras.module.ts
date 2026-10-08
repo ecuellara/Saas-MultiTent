@@ -230,6 +230,7 @@ export class ComprasController {
   constructor(private readonly service: ComprasService) {}
 
   @Get()
+  @RequirePermission('inventory.read')
   listar(): Promise<unknown> {
     return this.service.listar();
   }
@@ -241,6 +242,7 @@ export class ComprasController {
   }
 
   @Get(':id')
+  @RequirePermission('inventory.read')
   obtener(@Param('id') id: string): Promise<unknown> {
     return this.service.obtener(id);
   }

@@ -10,6 +10,7 @@ export class PagosController {
   constructor(private readonly service: PagosService) {}
 
   @Get()
+  @RequirePermission('payments.read')
   listar(): Promise<unknown> {
     return this.service.listar();
   }
@@ -21,6 +22,7 @@ export class PagosController {
   }
 
   @Get(':id')
+  @RequirePermission('payments.read')
   obtener(@Param('id') id: string): Promise<unknown> {
     return this.service.obtener(id);
   }

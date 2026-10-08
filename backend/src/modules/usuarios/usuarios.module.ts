@@ -150,6 +150,7 @@ export class UsuariosController {
   }
 
   @Get(':id')
+  @RequirePermission('users.manage')
   obtener(@Param('id') id: string): Promise<unknown> {
     return this.service.obtener(id);
   }

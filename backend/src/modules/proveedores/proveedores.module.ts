@@ -125,6 +125,7 @@ export class ProveedoresController {
   constructor(private readonly service: ProveedoresService) {}
 
   @Get()
+  @RequirePermission('inventory.read')
   listar(): Promise<unknown> {
     return this.service.listar();
   }
@@ -136,6 +137,7 @@ export class ProveedoresController {
   }
 
   @Get(':id')
+  @RequirePermission('inventory.read')
   obtener(@Param('id') id: string): Promise<unknown> {
     return this.service.obtener(id);
   }

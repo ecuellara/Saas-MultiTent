@@ -154,6 +154,7 @@ export class InsumosController {
   constructor(private readonly service: InsumosService) {}
 
   @Get()
+  @RequirePermission('inventory.read')
   listar(): Promise<unknown> {
     return this.service.listar();
   }
@@ -165,6 +166,7 @@ export class InsumosController {
   }
 
   @Get(':id')
+  @RequirePermission('inventory.read')
   obtener(@Param('id') id: string): Promise<unknown> {
     return this.service.obtener(id);
   }

@@ -128,6 +128,10 @@ selecciona sola y va al panel. Con más de una clínica aparece el selector.
   con detalle por tratamiento y plan de cuotas opcional), abonos hasta saldar
   y anulación con confirmación. Desde cada cita no cancelada de la agenda, el
   botón **Cobrar** abre el formulario ya vinculado a esa cita y su paciente.
+- **Inventario**: insumos con aviso de stock bajo mínimo, entradas y salidas
+  con motivo, y alta. **Proveedores**: lista, alta y edición.
+  **Compras**: alta con líneas (el total lo calcula el servidor) y detalle;
+  al registrar, el stock sube y se genera el egreso en la misma operación.
 
 ## 6. Panel de plataforma
 
