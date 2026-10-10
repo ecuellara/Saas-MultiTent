@@ -1,8 +1,9 @@
 /**
  * Seed idempotente del SaaS (bloqueador #2: sin contraseñas por defecto).
  *
- * Crea/actualiza: catálogo de `Permission`, planes `consultorio`/`clinica`
- * con sus features, y el `PlatformUser` owner.
+ * Crea/actualiza: catálogo de `Permission`, catálogo de hallazgos del
+ * odontograma (NTS 188), planes `consultorio`/`clinica` con sus features, y
+ * el `PlatformUser` owner.
  *
  * Requiere (falla si faltan, nunca usa defaults):
  *   PLATFORM_OWNER_EMAIL, PLATFORM_OWNER_PASSWORD (mín. 12 caracteres)
@@ -12,7 +13,7 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { CATALOGO_PERMISOS, PLANES_BASE } from './seed-data.js';
+import { CATALOGO_PERMISOS, PLANES_BASE, sembrarCatalogoHallazgos } from './seed-data.js';
 
 async function main(): Promise<void> {
   const email = process.env.PLATFORM_OWNER_EMAIL;
@@ -36,6 +37,10 @@ async function main(): Promise<void> {
         create: { id: `perm-${p.codigo}`, ...p },
       });
     }
+    // Catálogo NTS 188 (global, idempotente): sin él, la paleta del editor
+    // saldría vacía y registrar un hallazgo fallaría con «no catalogado».
+    const nHallazgos = await sembrarCatalogoHallazgos(prisma);
+    console.log(`Catálogo de hallazgos NTS 188: ${nHallazgos} entradas`);
     for (const plan of PLANES_BASE) {
       const guardado = await prisma.plan.upsert({
         where: { codigo: plan.codigo },

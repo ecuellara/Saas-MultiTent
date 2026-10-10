@@ -85,8 +85,7 @@ const router = createRouter({
         {
           path: 'odontograma',
           name: 'odontograma',
-          component: EnConstruccion,
-          props: { titulo: 'Odontograma', descripcion: 'NTS 188 versionado por paciente.' },
+          component: () => import('../views/odontograma/OdontogramaView.vue'),
           meta: { permiso: 'patients.read' },
         },
         {

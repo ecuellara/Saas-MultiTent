@@ -11,6 +11,7 @@
  *
  * Qué crea (todo idempotente):
  *   - catálogo de permisos (si falta),
+ *   - catálogo de hallazgos del odontograma NTS 188 (si falta),
  *   - la clínica `demo` con su configuración (horario de atención) y una sede,
  *   - el rol `ADMIN` con TODOS los permisos,
  *   - el usuario dueño y su membresía,
@@ -28,7 +29,7 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { CATALOGO_PERMISOS } from './seed-data.js';
+import { CATALOGO_PERMISOS, sembrarCatalogoHallazgos } from './seed-data.js';
 
 const SLUG = 'demo';
 
@@ -144,6 +145,11 @@ async function main(): Promise<void> {
         create: { id: `perm-${p.codigo}`, ...p },
       });
     }
+
+    // ---- Catálogo de hallazgos NTS 188 (global, idempotente) -------------------
+    // Sin él, la paleta del editor saldría vacía en la clínica demo.
+    const nHallazgos = await sembrarCatalogoHallazgos(prisma);
+    console.log(`Catálogo de hallazgos NTS 188: ${nHallazgos} entradas`);
 
     // ---- Plan (lo crea `npm run db:seed`) ------------------------------------
     const plan = await prisma.plan.findUnique({ where: { codigo: 'clinica' } });

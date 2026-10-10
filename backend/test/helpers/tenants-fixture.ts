@@ -21,6 +21,7 @@
  */
 import * as bcrypt from 'bcrypt';
 import type { PrismaClient } from '@prisma/client';
+import { CATALOGO_HALLAZGOS } from '../../src/core/catalogo/hallazgos.js';
 
 export const PASSWORD_PLAIN = 'Prueba-Aislamiento-2026!';
 
@@ -75,11 +76,12 @@ export const PERMISOS_BASE = [
   { codigo: 'users.manage', recurso: 'users', accion: 'manage' },
 ];
 
-/** Códigos del catálogo NTS 188 que el seed debe garantizar. */
-export const HALLAZGOS_BASE = [
-  { codigo: 'CARIES', nombre: 'Lesión de caries dental', abreviatura: 'C', alcance: 'superficie', requiereSuperficie: true, requiereMaterial: false, colorDefecto: 'rojo' },
-  { codigo: 'OBTURADO', nombre: 'Restauración', abreviatura: 'O', alcance: 'superficie', requiereSuperficie: true, requiereMaterial: true, colorDefecto: 'azul' },
-];
+/**
+ * Catálogo NTS 188 que el seed debe garantizar. Es la FUENTE ÚNICA
+ * (`src/core/catalogo/hallazgos.ts`), no una copia: si la norma crece, el
+ * fixture la sigue sin editar este archivo.
+ */
+export const HALLAZGOS_BASE = CATALOGO_HALLAZGOS;
 
 /**
  * Crea los dos tenants con un juego de datos equivalente y aislado.

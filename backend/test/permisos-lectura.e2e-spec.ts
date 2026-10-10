@@ -136,6 +136,7 @@ describe('Permisos de lectura clínica', () => {
     },
     { nombre: 'odontogramas del paciente', path: (d) => `/api/pacientes/${d.a.pacienteId}/odontogramas` },
     { nombre: 'odontograma por id', path: (d) => `/api/odontogramas/${d.a.odontogramaId}` },
+    { nombre: 'catálogo de hallazgos del odontograma', path: () => '/api/odontogramas/catalogo' },
     { nombre: 'consentimiento por id', path: (d) => `/api/consentimientos/${d.a.consentimientoId}` },
     { nombre: 'plantillas de consentimiento', path: () => '/api/consentimientos/plantillas' },
     { nombre: 'historiales (controlador propio)', path: (d) => `/api/historiales?pacienteId=${d.a.pacienteId}` },

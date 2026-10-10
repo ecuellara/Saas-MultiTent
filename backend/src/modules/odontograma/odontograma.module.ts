@@ -74,6 +74,16 @@ type OdontoRow = Record<string, unknown> & {
 };
 
 /**
+ * NTS 188: el ROJO marca patología o tratamiento pendiente y el AZUL lo ya
+ * realizado. `estadoClinico` se deriva de esa convención del catálogo, nunca
+ * del cliente (el DTO ni siquiera declara el campo y el whitelist lo rechaza
+ * con 400 si llega en el cuerpo).
+ */
+function estadoClinicoPara(colorDefecto: string): string {
+  return colorDefecto === 'rojo' ? 'patologico' : 'tratado';
+}
+
+/**
  * Odontograma NTS 188 versionado (doc §6).
  * - Versión atómica por paciente: `@@unique([tenantId, pacienteId, version])`.
  * - Bloqueo por firma: firmado → solo lectura ("anular ≠ borrar").
@@ -231,7 +241,7 @@ export class OdontogramaService {
           pieza: dto.pieza,
           hallazgoCodigo: dto.hallazgoCodigo,
           superficies,
-          estadoClinico: 'patologico',
+          estadoClinico: estadoClinicoPara(cat.colorDefecto),
           color: cat.colorDefecto,
           material: dto.material ?? null,
           tratamientoId: dto.tratamientoId ?? null,
@@ -251,6 +261,32 @@ export class OdontogramaService {
         },
       });
       return hallazgo;
+    });
+  }
+
+  /**
+   * Catálogo de hallazgos para la paleta del editor: solo los activos, con
+   * `select` explícito (invariante 3: sin `id` interno, `activo` ni `version`).
+   * Es GLOBAL (la tabla no tiene `tenantId`), pero exige contexto de clínica
+   * y `patients.read` igual que el resto de lecturas clínicas.
+   */
+  async catalogo(): Promise<unknown> {
+    requireTenant();
+    const db = this.prisma as unknown as {
+      hallazgoCatalogo: { findMany: (a: unknown) => Promise<unknown> };
+    };
+    return db.hallazgoCatalogo.findMany({
+      where: { activo: true },
+      orderBy: { codigo: 'asc' },
+      select: {
+        codigo: true,
+        nombre: true,
+        abreviatura: true,
+        alcance: true,
+        requiereSuperficie: true,
+        requiereMaterial: true,
+        colorDefecto: true,
+      },
     });
   }
 
@@ -315,6 +351,14 @@ export class OdontogramaController {
   @RequirePermission('patients.write')
   crear(@Body() dto: CreateOdontogramaDto): Promise<unknown> {
     return this.service.crear(dto);
+  }
+
+  // ANTES de `@Get(':id')`: si no, `catalogo` se interpretaría como un id
+  // (el mismo cuidado que `plantillas` en consentimientos).
+  @Get('catalogo')
+  @RequirePermission('patients.read')
+  catalogo(): Promise<unknown> {
+    return this.service.catalogo();
   }
 
   @Get(':id')

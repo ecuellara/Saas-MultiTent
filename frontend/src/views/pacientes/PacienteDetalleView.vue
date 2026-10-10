@@ -197,7 +197,11 @@ async function alGuardar(): Promise<void> {
           :puede-escribir="puedeEscribir"
         />
 
-        <OdontogramasPanel v-else-if="pestana === 'odontogramas'" :paciente-id="pacienteId" />
+        <OdontogramasPanel
+          v-else-if="pestana === 'odontogramas'"
+          :paciente-id="pacienteId"
+          :puede-escribir="puedeEscribir"
+        />
 
         <ConsentimientosPanel
           v-else-if="pestana === 'consentimientos'"
