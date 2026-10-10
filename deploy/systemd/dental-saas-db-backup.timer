@@ -1,0 +1,11 @@
+# Timer del respaldo diario de la base (03:00, con catch-up si estuvo apagado).
+[Unit]
+Description=Respaldo diario de la base dental-saas (03:00)
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

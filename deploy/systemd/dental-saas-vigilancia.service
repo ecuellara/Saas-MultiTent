@@ -1,0 +1,19 @@
+# Vigilancia mínima cada hora (mejora #21): `/api/health` + tasa de FAILURE +
+# marca de acceso cruzado en `Auditoria` (`npm run vigilancia`).
+#
+# Sale != 0 si algo va mal y entonces systemd activa el aviso (ver
+# dental-saas-aviso@.service). Instalación: igual que las de respaldo.
+# `VIGILANCIA_API_URL` va en el mismo EnvironmentFile.
+[Unit]
+Description=Vigilancia horaria dental-saas (health + auditoría)
+OnFailure=dental-saas-aviso@%n.service
+
+[Service]
+Type=oneshot
+User=dental
+WorkingDirectory=/opt/dental-saas/backend
+EnvironmentFile=/etc/dental-saas/backend.env
+ExecStart=/usr/bin/npm run vigilancia
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dental-vigilancia

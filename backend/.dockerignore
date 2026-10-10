@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+coverage/
+.env
+.env.*
+!.env.example
+backups/
+uploads/
+storage/
+*.dump
+*.log
+.pglite-data/

@@ -1,0 +1,18 @@
+# Respaldo diario de los archivos subidos (misma frecuencia que la base: el RPO
+# es el mismo). Ver docs/despliegue.md §5 y docs/backups.md §8.
+#
+# Instalación: igual que dental-saas-db-backup.service (mismo EnvironmentFile;
+# usa UPLOADS_DIR y BACKUP_DIR de ahí).
+[Unit]
+Description=Respaldo diario de uploads dental-saas (tar.gz)
+OnFailure=dental-saas-aviso@%n.service
+
+[Service]
+Type=oneshot
+User=dental
+WorkingDirectory=/opt/dental-saas/backend
+EnvironmentFile=/etc/dental-saas/backend.env
+ExecStart=/usr/bin/npm run archivos:backup
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dental-archivos-backup

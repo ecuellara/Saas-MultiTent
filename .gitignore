@@ -11,11 +11,13 @@
 **/.env
 **/.env.*
 !**/.env.example
+!**/.env.staging.example
 
 # Tests / logs / backups locales
 **/coverage/
 *.log
 *.dump
+*.manifiesto.json
 
 # Uploads y storage de desarrollo (solo directorios de datos en raíz)
 # (anclados a raíz: un módulo llamado igual en src/ sí se versiona)

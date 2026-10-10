@@ -1,0 +1,120 @@
+# Staging del SaaS: PostgreSQL 16 + API + frontend que hace de proxy.
+#
+# Uso (todos los comandos llevan `--env-file`: las credenciales viven SOLO en
+# `.env.staging`, nunca incrustadas aquí):
+#   cp .env.staging.example .env.staging   # y rellenar los secretos
+#   docker compose --env-file .env.staging -f compose.staging.yml config
+#   docker compose --env-file .env.staging -f compose.staging.yml up -d --build
+#   docker compose --env-file .env.staging -f compose.staging.yml run --rm herramientas npx prisma migrate deploy
+#
+# Diseñado para NO pisar el desarrollo local:
+#   - `name: dental-staging` (red y contenedores propios, p. ej.
+#     `dental-staging-db-1`, no toca `dental-saas-test`).
+#   - Puertos por variable con defecto FUERA del rango de dev
+#     (dev: pg 5433, api 3000, vite 5173, smoke 3100;
+#      staging: pg 5434, api 3001, web 8080).
+#   - Volúmenes nombrados propios (`staging-*`): la base y los archivos
+#     sobreviven a `down` + `up` y nunca acaban en el repo.
+#
+# `TRUST_PROXY=1`: detrás del nginx de este compose hay UN solo salto
+# (en producción con CDN es 2; ver `TRUST_PROXY` en backend/.env.example).
+
+name: dental-staging
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${STAGING_DB_USER:-postgres}
+      # Sin valor por defecto y con `${VAR:?}`: si falta (o está vacía), `config`
+      # y `up` fallan con este mensaje en vez de renderizar una contraseña VACÍA.
+      # Comprobado: NO basta con confiar en que postgres se niegue a arrancar
+      # —solo lo hace con el volumen VACÍO—; con un volumen ya inicializado
+      # arranca igual y el fallo se traslada a que la API no puede conectar (lo
+      # detecta el healthcheck, pero el diagnóstico es mucho peor).
+      POSTGRES_PASSWORD: "${STAGING_DB_PASSWORD:?falta STAGING_DB_PASSWORD (copia .env.staging.example a .env.staging y rellenalo)}"
+      POSTGRES_DB: ${STAGING_DB_NAME:-dental_saas_staging}
+    ports:
+      - "${STAGING_POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - staging-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime
+    image: dental-api:staging
+    restart: unless-stopped
+    # `required: false` para que `config` valide sin el archivo; sin él, la
+    # API se niega a arrancar (JWT obligatorio en producción) y postgres
+    # tampoco levanta sin contraseña. El fallo es al subir, en voz alta.
+    env_file:
+      - path: .env.staging
+        required: false
+    environment:
+      # Se compone aquí (no va en .env.staging): dentro del compose el host
+      # es `db`. Si la contraseña falta, el backend no conecta y el
+      # healthcheck lo deja en evidencia.
+      DATABASE_URL: "postgresql://${STAGING_DB_USER:-postgres}:${STAGING_DB_PASSWORD}@db:5432/${STAGING_DB_NAME:-dental_saas_staging}?sslmode=disable"
+    ports:
+      - "${STAGING_API_PORT:-3001}:3000"
+    volumes:
+      # Deuda nº 13 vista desde el despliegue: sin este volumen, cada
+      # redespliegue BORRARÍA radiografías, PDFs y firmas.
+      - staging-uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  proxy:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runtime
+    image: dental-web:staging
+    restart: unless-stopped
+    ports:
+      - "${STAGING_WEB_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # Operaciones puntuales dentro de la red del compose (NO arranca con `up`):
+  # migraciones, seeds y respaldos contra la base de staging.
+  #   docker compose --env-file .env.staging -f compose.staging.yml run --rm herramientas npx prisma migrate deploy
+  herramientas:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: herramientas
+    image: dental-herramientas:staging
+    profiles:
+      - herramientas
+    env_file:
+      - path: .env.staging
+        required: false
+    environment:
+      DATABASE_URL: "postgresql://${STAGING_DB_USER:-postgres}:${STAGING_DB_PASSWORD}@db:5432/${STAGING_DB_NAME:-dental_saas_staging}?sslmode=disable"
+      PG_DUMP_BIN: pg_dump
+      PG_RESTORE_BIN: pg_restore
+    volumes:
+      - staging-uploads:/app/uploads
+      # BACKUP_DIR propio del staging (ver .env.staging): los volcados de
+      # ensayo no se mezclan con los de desarrollo.
+      - staging-backups:/app/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  staging-pgdata:
+  staging-uploads:
+  staging-backups:

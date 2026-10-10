@@ -81,3 +81,33 @@ jobs:
       # `build` cubre además el empaquetado real de Vite y Tailwind.
       - run: npm run typecheck
       - run: npm run build
+
+  despliegue:
+    # El Dockerfile no se puede pudrir en silencio: se construyen las imágenes
+    # y se levanta el staging comprobando `/api/health` por el proxy y en
+    # directo. No se publica nada (sin registry, sin secretos: el .env.staging
+    # de aquí lleva solo valores de prueba).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Crear .env.staging de CI (prueba, no secretos)
+        run: |
+          cat > .env.staging <<'EOF'
+          STAGING_DB_PASSWORD=test
+          JWT_SECRET=secreto-de-pruebas-de-al-menos-32-caracteres-ok
+          PLATFORM_OWNER_EMAIL=owner@test.pe
+          PLATFORM_OWNER_PASSWORD=Plataforma-Arranque-2026!
+          DEMO_OWNER_EMAIL=demo@test.pe
+          DEMO_OWNER_PASSWORD=Demo-Arranque-2026!
+          EOF
+      - run: docker compose --env-file .env.staging -f compose.staging.yml build backend proxy herramientas
+      - run: docker compose --env-file .env.staging -f compose.staging.yml up -d --wait db
+      - run: docker compose --env-file .env.staging -f compose.staging.yml run --rm herramientas npx prisma migrate deploy
+      - run: docker compose --env-file .env.staging -f compose.staging.yml run --rm herramientas npm run db:seed
+      - run: docker compose --env-file .env.staging -f compose.staging.yml up -d --wait
+      - name: Comprobar /api/health (proxy y directo, con base ok)
+        run: |
+          curl -fsS http://127.0.0.1:8080/api/health | grep -q '"database":"ok"'
+          curl -fsS http://127.0.0.1:3001/api/health | grep -q '"database":"ok"'
+      - run: docker compose --env-file .env.staging -f compose.staging.yml down -v
+        if: always()

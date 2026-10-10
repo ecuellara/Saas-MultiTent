@@ -26,6 +26,7 @@ prisma/migrations/**/migration.sql.lock
 # Volcados de pg_dump (doc backups.md): nunca al repositorio.
 /backups/
 *.dump
+*.manifiesto.json
 
 # IDE / SO
 .vscode/

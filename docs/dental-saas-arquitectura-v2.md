@@ -1485,6 +1485,9 @@ GET /health/version
 
 > Procedimiento ejecutable: [docs/backups.md](backups.md) (scripts
 > `db:backup`, `db:restaurar` y `db:prueba-restauracion`, con simulacro en CI).
+> Despliegue y rollback: [docs/despliegue.md](despliegue.md) (staging en
+> compose, ensayo de la migración de la clínica, timers de respaldo y
+> vigilancia).
 
 - Backups automáticos de Supabase + PITR (si el plan lo permite).
 - Backup lógico adicional + backup de Storage.
@@ -1532,6 +1535,13 @@ GET /health/version
 | 20 | OpenAPI/contrato generado (`@nestjs/swagger`) para eliminar drift frontend↔backend |
 | 21 | Observabilidad: alertas por tasa de 5xx y por acceso cruzado |
 
+> Mejora #21, primera parte hecha: `npm run vigilancia`
+> (`backend/scripts/vigilancia.mjs`, sin dependencias nuevas) comprueba
+> `/api/health`, la tasa de `FAILURE` en `Auditoria` y la marca explícita de
+> acceso cruzado, y sale != 0 si algo va mal; hay timer systemd horario y
+> gancho `OnFailure`. Falta el canal real (ver deuda-técnica). Detalle en
+> [docs/despliegue.md](despliegue.md) §6.
+
 ---
 
 ## 14. Plan de implementación por fases
@@ -1576,6 +1586,7 @@ GET /health/version
 
 - Script idempotente: crear `Tenant` + `Sede` + `User` admin + `Membership` + roles; backfill de `tenantId`; verificar integridad referencial.
 - Backup completo antes; validar en staging primero; rollback documentado.
+- Procedimiento ejecutable (ensayo paso a paso + rollback medido): [docs/despliegue.md](despliegue.md) §3 y §4.
 
 **Salida:** la clínica actual opera como primer tenant sin pérdida de datos.
 
@@ -1610,6 +1621,12 @@ GET /health/version
 ### Fase 9 — Hardening y producción (1-2 semanas)
 
 - CI/CD con staging, pruebas de aislamiento en pipeline, rollback documentado, alertas.
+- Hecho (ver [docs/despliegue.md](despliegue.md)): `compose.staging.yml`
+  (staging con su base y sus volúmenes), CI que construye las imágenes y
+  comprueba `/api/health`, rollback documentado con tiempos medidos,
+  vigilancia mínima con timer (`npm run vigilancia`) y timers de respaldo.
+  Pendiente: copia externa de respaldos y canal real de alertas (ver
+  [deuda-tecnica.md](deuda-tecnica.md)).
 
 **Salida:** producción estable con el primer cliente.
 

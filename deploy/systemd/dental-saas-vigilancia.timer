@@ -1,0 +1,11 @@
+# Timer de vigilancia (cada hora, en el minuto 15).
+[Unit]
+Description=Vigilancia horaria dental-saas
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

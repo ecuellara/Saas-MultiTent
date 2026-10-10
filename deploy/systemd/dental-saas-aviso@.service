@@ -1,0 +1,19 @@
+# Plantilla de aviso cuando un servicio falla (`OnFailure=` de las unidades de
+# respaldo y vigilancia). Hace DOS cosas:
+#   1. Deja una línea `emerg` en el journal (visible en cualquier panel que
+#      lea el journal y en `journalctl -p emerg`).
+#   2. Llama al gancho `/etc/dental-saas/avisos.sh` SI EXISTE, con el nombre
+#      de la unidad fallida como argumento. Ese script (fuera del repo, porque
+#      lleva el webhook/token del canal) es donde se conecta el canal REAL
+#      (correo, Telegram, Healthchecks...). Sin él, el aviso queda solo en el
+#      journal: la alerta al canal real SIGUE PENDIENTE (ver deuda-técnica).
+#
+# Ejemplo de /etc/dental-saas/avisos.sh (no versionar):
+#   #!/bin/sh
+#   curl -fsS -m 10 --retry 3 -d "FALLO $1 en $(hostname)" "$AVISOS_WEBHOOK" >/dev/null
+[Unit]
+Description=Aviso de fallo de %i
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo "FALLO %i en $(hostname): ver journalctl -u %i" | systemd-cat -t dental-aviso -p emerg; test -x /etc/dental-saas/avisos.sh && /etc/dental-saas/avisos.sh "%i" || true'

@@ -1,0 +1,28 @@
+# Respaldo diario de la base de datos (ver docs/despliegue.md §5 y docs/backups.md).
+#
+# Instalación (una vez, como root):
+#   cp deploy/systemd/dental-saas-* /etc/systemd/system/
+#   # /etc/dental-saas/backend.env con DATABASE_URL, BACKUP_DIR, BACKUP_RETENCION_DIAS
+#   # (mismo formato que backend/.env; SOLO root puede leerlo: chmod 600)
+#   systemctl daemon-reload
+#   systemctl enable --now dental-saas-db-backup.timer
+#
+# La salida va al journal (`journalctl -u dental-saas-db-backup`); si el
+# servicio falla, systemd activa `dental-saas-aviso@.service` (ver ese archivo
+# para conectar el canal real de alertas).
+[Unit]
+Description=Respaldo diario de la base dental-saas (pg_dump)
+OnFailure=dental-saas-aviso@%n.service
+
+[Service]
+Type=oneshot
+User=dental
+WorkingDirectory=/opt/dental-saas/backend
+EnvironmentFile=/etc/dental-saas/backend.env
+# Binarios locales en el servidor (sin Docker que intermedie).
+Environment=PG_DUMP_BIN=/usr/bin/pg_dump
+Environment=PG_RESTORE_BIN=/usr/bin/pg_restore
+ExecStart=/usr/bin/npm run db:backup
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dental-db-backup

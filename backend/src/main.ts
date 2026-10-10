@@ -16,14 +16,21 @@ import { GlobalExceptionFilter } from './core/filters/global-exception.filter.js
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
-  // `trust proxy` = 2 saltos: Cloudflare → Nginx → API (doc §5 y §8.2). Con 1,
-  // `req.ip` sería la IP del edge de Cloudflare (que ya reenvía a Nginx) y el
-  // rate limit por IP se degradaría a un cubo compartido por todos los
-  // clientes. Si se despliega SIN Cloudflare (solo Nginx delante) debe ser 1;
-  // si la API queda expuesta directamente, 0.
+  // `trust proxy`: cuántos saltos de proxy hay delante de la API.
+  // `TRUST_PROXY` (entero >= 0, por defecto 2 = Cloudflare → Nginx → API,
+  // doc §5 y §8.2). Con un valor MAYOR que los saltos reales, `req.ip` sería
+  // la IP de un proxy y el rate limit por IP se degradaría a un cubo
+  // compartido por todos los clientes (además de ensuciar la auditoría).
+  // Valores: 2 con CDN+proxy, 1 detrás de un solo nginx (compose staging),
+  // 0 si la API queda expuesta directamente. Si falta o no es válido, el
+  // arranque FALLA: un valor silenciosamente erróneo es peor que no arrancar.
+  const saltos = Number(process.env.TRUST_PROXY ?? 2);
+  if (!Number.isInteger(saltos) || saltos < 0) {
+    throw new Error('TRUST_PROXY debe ser un entero >= 0 (0 directo, 1 un proxy, 2 CDN+proxy)');
+  }
   (app.getHttpAdapter().getInstance() as { set?: (k: string, v: unknown) => void }).set?.(
     'trust proxy',
-    2,
+    saltos,
   );
   app.setGlobalPrefix('api');
   // CORS (doc §8.7): orígenes explícitos con trim; credentials SÍ porque el
