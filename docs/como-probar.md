@@ -132,6 +132,10 @@ selecciona sola y va al panel. Con más de una clínica aparece el selector.
   con motivo, y alta. **Proveedores**: lista, alta y edición.
   **Compras**: alta con líneas (el total lo calcula el servidor) y detalle;
   al registrar, el stock sube y se genera el egreso en la misma operación.
+- **Configuración**: datos de la clínica, horario semanal (7 filas con
+  `<input type="time">`) y descansos. Sin permiso de gestión se ve en solo
+  lectura. Prueba poner el sábado hasta las 13:00 y agendar a las 14:00:
+  la API responde 400.
 
 ## 6. Panel de plataforma
 
@@ -172,7 +176,7 @@ $env:JWT_SECRET   = "secreto-de-pruebas-de-al-menos-32-caracteres-ok"
 npx vitest run --config vitest.config.e2e.ts
 ```
 
-Son **161 pruebas** sobre una base de datos real (usan `dental_saas_test`, no
+Son **183 pruebas** sobre una base de datos real (usan `dental_saas_test`, no
 `dental_saas_dev`: no se pisan con tu entorno de desarrollo).
 
 Frontend:

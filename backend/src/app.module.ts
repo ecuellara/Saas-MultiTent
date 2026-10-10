@@ -13,6 +13,7 @@ import { TenantContextMiddleware } from './core/tenant-context/tenant-context.mi
 import { AuthModule } from './modules/auth/auth.module.js';
 import { CitasModule } from './modules/citas/citas.module.js';
 import { ComprasModule } from './modules/compras/compras.module.js';
+import { ConfiguracionModule } from './modules/configuracion/configuracion.module.js';
 import { ConsentimientosModule } from './modules/consentimientos/consentimientos.module.js';
 import { EspecialidadesModule } from './modules/especialidades/especialidades.module.js';
 import { FacturacionModule } from './modules/facturacion/facturacion.module.js';
@@ -42,6 +43,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module.js';
     InsumosModule,
     ProveedoresModule,
     ComprasModule,
+    ConfiguracionModule,
     ConsentimientosModule,
     EspecialidadesModule,
     FacturacionModule,

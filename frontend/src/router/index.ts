@@ -149,8 +149,7 @@ const router = createRouter({
         {
           path: 'configuracion',
           name: 'configuracion',
-          component: EnConstruccion,
-          props: { titulo: 'Configuración', descripcion: 'Datos de la clínica y horarios.' },
+          component: () => import('../views/ConfiguracionView.vue'),
         },
       ],
     },
