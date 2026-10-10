@@ -32,6 +32,7 @@ import { AppModule } from '../src/app.module.js';
 import { montarAppE2E } from './helpers/app.e2e.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { PASSWORD_PLAIN, limpiarDosTenants, seedDosTenants, type DosTenants } from './helpers/tenants-fixture.js';
+import { PNG_BYTES } from './helpers/archivos.js';
 
 /** Mensaje del `message` de Nest, que puede venir como cadena o como array. */
 function textoMensaje(body: unknown): string {
@@ -121,6 +122,14 @@ describe('Contrato de inventario clínico (consentimientos, odontograma e insumo
         });
       expect(creado.status, JSON.stringify(creado.body)).toBe(201);
       const id = (creado.body as { id: string }).id;
+
+      // Firmar exige la firma del paciente ya adjunta: primero se sube.
+      await http()
+        .post(`/api/consentimientos/${id}/firmas`)
+        .set(H)
+        .field('rol', 'paciente')
+        .attach('archivo', PNG_BYTES, { filename: 'firma.png', contentType: 'image/png' })
+        .expect(201);
 
       const r = await http()
         .patch(`/api/consentimientos/${id}/estado`)

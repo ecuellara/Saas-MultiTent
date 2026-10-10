@@ -132,6 +132,9 @@ selecciona sola y va al panel. Con más de una clínica aparece el selector.
   con motivo, y alta. **Proveedores**: lista, alta y edición.
   **Compras**: alta con líneas (el total lo calcula el servidor) y detalle;
   al registrar, el stock sube y se genera el egreso en la misma operación.
+- **Consentimientos**: plantillas con alta, alta de consentimientos eligiendo
+  paciente y plantilla, y en la ficha del paciente la pestaña con firma
+  manuscrita (ratón o dedo), revocar/anular e impresión del documento.
 - **Configuración**: datos de la clínica, horario semanal (7 filas con
   `<input type="time">`) y descansos. Sin permiso de gestión se ve en solo
   lectura. Prueba poner el sábado hasta las 13:00 y agendar a las 14:00:

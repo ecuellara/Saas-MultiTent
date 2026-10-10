@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import DocumentosPanel from '../../components/pacientes/DocumentosPanel.vue'
+import ConsentimientosPanel from '../../components/pacientes/ConsentimientosPanel.vue'
 import HistorialPanel from '../../components/pacientes/HistorialPanel.vue'
 import OdontogramasPanel from '../../components/pacientes/OdontogramasPanel.vue'
 import PacienteFormModal from '../../components/pacientes/PacienteFormModal.vue'
@@ -22,7 +23,7 @@ const cargando = ref(true)
 const error = ref('')
 const modalEdicion = ref(false)
 
-type Pestana = 'datos' | 'historial' | 'documentos' | 'odontogramas'
+type Pestana = 'datos' | 'historial' | 'documentos' | 'odontogramas' | 'consentimientos'
 const pestana = ref<Pestana>('datos')
 
 const PESTANAS: Array<{ clave: Pestana; etiqueta: string }> = [
@@ -30,6 +31,7 @@ const PESTANAS: Array<{ clave: Pestana; etiqueta: string }> = [
   { clave: 'historial', etiqueta: 'Historial' },
   { clave: 'documentos', etiqueta: 'Documentos' },
   { clave: 'odontogramas', etiqueta: 'Odontogramas' },
+  { clave: 'consentimientos', etiqueta: 'Consentimientos' },
 ]
 
 const puedeEscribir = computed(() => sesion.puede('patients.write'))
@@ -195,7 +197,14 @@ async function alGuardar(): Promise<void> {
           :puede-escribir="puedeEscribir"
         />
 
-        <OdontogramasPanel v-else :paciente-id="pacienteId" />
+        <OdontogramasPanel v-else-if="pestana === 'odontogramas'" :paciente-id="pacienteId" />
+
+        <ConsentimientosPanel
+          v-else-if="pestana === 'consentimientos'"
+          :paciente-id="pacienteId"
+          :puede-escribir="puedeEscribir"
+        />
+        <div v-else />
       </div>
 
       <PacienteFormModal

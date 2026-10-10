@@ -10,6 +10,7 @@ import { AppModule } from '../src/app.module.js';
 import { montarAppE2E } from './helpers/app.e2e.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { PASSWORD_PLAIN, limpiarDosTenants, seedDosTenants, type DosTenants } from './helpers/tenants-fixture.js';
+import { PNG_BYTES } from './helpers/archivos.js';
 import { fechaFutura } from './helpers/fechas.js';
 
 describe('Smoke Fase 2/3', () => {
@@ -111,6 +112,14 @@ describe('Smoke Fase 2/3', () => {
     }).expect(201);
     expect(typeof cons.body.cuerpoSnapshot).toBe('string');
     await request(app.getHttpServer()).patch(`/api/consentimientos/${cons.body.id}/estado`).set(H).send({ estado: 'revocado' }).expect(400);
+    // Firmar exige la firma del paciente ya adjunta (si no, 400).
+    await request(app.getHttpServer()).patch(`/api/consentimientos/${cons.body.id}/estado`).set(H).send({ estado: 'firmado' }).expect(400);
+    await request(app.getHttpServer())
+      .post(`/api/consentimientos/${cons.body.id}/firmas`)
+      .set(H)
+      .field('rol', 'paciente')
+      .attach('archivo', PNG_BYTES, { filename: 'firma.png', contentType: 'image/png' })
+      .expect(201);
     await request(app.getHttpServer()).patch(`/api/consentimientos/${cons.body.id}/estado`).set(H).send({ estado: 'firmado' }).expect(200);
     const rev = await request(app.getHttpServer()).patch(`/api/consentimientos/${cons.body.id}/estado`).set(H).send({ estado: 'revocado' }).expect(200);
     expect(rev.body.revocadoEn).toBeTruthy();

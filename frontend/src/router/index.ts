@@ -92,8 +92,13 @@ const router = createRouter({
         {
           path: 'consentimientos',
           name: 'consentimientos',
-          component: EnConstruccion,
-          props: { titulo: 'Consentimientos', descripcion: 'Plantillas, firma y PDF.' },
+          component: () => import('../views/consentimientos/ConsentimientosView.vue'),
+          meta: { permiso: 'consents.read' },
+        },
+        {
+          path: 'consentimientos/:id/impresion',
+          name: 'consentimiento-impresion',
+          component: () => import('../views/consentimientos/ConsentimientoImpresionView.vue'),
           meta: { permiso: 'consents.read' },
         },
         {
