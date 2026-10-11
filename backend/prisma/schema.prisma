@@ -167,6 +167,7 @@ model Sede {
   direccion   String?
   telefono    String?
   esPrincipal Boolean      @default(false)
+  activo      Boolean      @default(true)
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   memberships Membership[]
   insumos     Insumo[]

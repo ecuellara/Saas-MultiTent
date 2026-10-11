@@ -46,6 +46,7 @@ type DbUsuarios = {
   role: { findUnique: (a: unknown) => Promise<{ tenantId: string } | null> };
   sede: { findUnique: (a: unknown) => Promise<{ tenantId: string } | null> };
   user: {
+    findMany: (a: unknown) => Promise<UserRow[]>;
     findUnique: (a: unknown) => Promise<{ id: string } | null>;
     create: (a: unknown) => Promise<Record<string, unknown>>;
   };
@@ -57,6 +58,41 @@ export class UsuariosService {
     private readonly prisma: PrismaService,
     private readonly entitlements: EntitlementsService,
   ) {}
+
+  /**
+   * Equipo de la clínica: usuarios con pertenencia en el tenant del contexto.
+   *
+   * La pertenencia trae rol y sede con NOMBRE (la pantalla lista personas, no
+   * ids). Invariante 3: `select` explícito, igual que en `obtener` — sin
+   * `passwordHash`, `passwordAlgo` ni `mfaSecret` en ningún caso.
+   */
+  async listar(): Promise<Record<string, unknown>[]> {
+    const ctx = requireTenant();
+    const db = this.prisma as unknown as {
+      user: { findMany: (a: unknown) => Promise<UserRow[]> };
+    };
+    const usuarios = await db.user.findMany({
+      where: { memberships: { some: { tenantId: ctx.tenantId } } },
+      select: {
+        id: true, email: true, nombre: true, cop: true, estado: true,
+        mfaEnabled: true, lastLoginAt: true, createdAt: true, updatedAt: true,
+        memberships: {
+          where: { tenantId: ctx.tenantId },
+          select: {
+            id: true, tenantId: true, userId: true, roleId: true, sedeId: true,
+            estado: true, joinedAt: true,
+            role: { select: { id: true, codigo: true, nombre: true } },
+            sede: { select: { id: true, nombre: true } },
+          },
+        },
+      },
+      orderBy: { nombre: 'asc' },
+    } as unknown as object);
+    return usuarios.map((u) => {
+      const { passwordHash: _omit, mfaSecret: _omit2, ...seguro } = u;
+      return seguro;
+    });
+  }
 
   async obtener(id: string): Promise<Record<string, unknown>> {
     const ctx = requireTenant();
@@ -142,6 +178,12 @@ export class UsuariosService {
 @Controller('usuarios')
 export class UsuariosController {
   constructor(private readonly service: UsuariosService) {}
+
+  @Get()
+  @RequirePermission('users.manage')
+  listar(): Promise<unknown> {
+    return this.service.listar();
+  }
 
   @Post()
   @RequirePermission('users.manage')

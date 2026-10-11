@@ -68,6 +68,11 @@ iex "$dc run --rm herramientas npm run db:seed"
 iex "$dc run --rm herramientas npm run db:seed-demo"
 ```
 
+> **Si la migración cambia el esquema, reconstruye ANTES las imágenes.** El cliente de
+> Prisma va DENTRO de la imagen, así que un contenedor con el cliente viejo frente a un
+> esquema nuevo responde 400 en los campos recién añadidos (pasó con `PATCH /sedes/:id
+> {"activo":false}` tras la migración `5_sede_activo`). El orden es **build → migrate**.
+
 Comprobación (puertos y salud):
 
 ```powershell

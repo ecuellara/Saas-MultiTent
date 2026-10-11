@@ -6,6 +6,7 @@ import { IsArray, IsOptional, IsString } from 'class-validator';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
+import { CATALOGO_PERMISOS, type PermisoCatalogo } from '../../core/catalogo/permisos.js';
 
 export class CreateRoleDto {
   @ApiProperty({ example: 'RECEPCION' })
@@ -63,6 +64,17 @@ export class RolesService {
       },
       orderBy: { codigo: 'asc' },
     } as unknown as object) as Promise<RoleRow[]>;
+  }
+
+  /**
+   * Catálogo de permisos para el editor de roles: `codigo`, `recurso` y
+   * `accion` desde la fuente única (`CATALOGO_PERMISOS`), sin duplicar la
+   * lista. Es GLOBAL (sin `tenantId`), pero exige contexto de clínica y
+   * `roles.manage` igual que el resto del módulo.
+   */
+  async catalogoPermisos(): Promise<PermisoCatalogo[]> {
+    requireTenant();
+    return CATALOGO_PERMISOS;
   }
 
   async obtener(id: string): Promise<RoleRow> {
@@ -132,6 +144,15 @@ export class RolesController {
   @RequirePermission('roles.manage')
   crear(@Body() dto: CreateRoleDto): Promise<unknown> {
     return this.service.crear(dto);
+  }
+
+  // ANTES de `@Get(':id')`: si no, `permisos` se interpretaría como un id
+  // (el mismo cuidado que `catalogo` en odontograma y `plantillas` en
+  // consentimientos).
+  @Get('permisos')
+  @RequirePermission('roles.manage')
+  catalogoPermisos(): Promise<unknown> {
+    return this.service.catalogoPermisos();
   }
 
   @Get(':id')

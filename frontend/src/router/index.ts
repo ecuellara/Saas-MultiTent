@@ -13,9 +13,6 @@ declare module 'vue-router' {
   }
 }
 
-/** Vista de relleno para los módulos que aún no están construidos. */
-const EnConstruccion = () => import('../views/EnConstruccionView.vue')
-
 const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -139,15 +136,13 @@ const router = createRouter({
         {
           path: 'usuarios',
           name: 'usuarios',
-          component: EnConstruccion,
-          props: { titulo: 'Usuarios', descripcion: 'Cuentas, roles y permisos.' },
+          component: () => import('../views/usuarios/UsuariosView.vue'),
           meta: { permiso: 'users.manage' },
         },
         {
           path: 'sedes',
           name: 'sedes',
-          component: EnConstruccion,
-          props: { titulo: 'Sedes', descripcion: 'Sedes de la clínica.' },
+          component: () => import('../views/sedes/SedesView.vue'),
           meta: { permiso: 'sedes.manage' },
         },
         {

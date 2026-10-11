@@ -51,9 +51,16 @@ Crea la base de datos y puebla:
 docker exec dental-saas-test psql -U postgres -c "CREATE DATABASE dental_saas_dev"
 
 npx prisma migrate deploy     # aplica las migraciones
+npx prisma generate           # REGENERA el cliente (ver aviso abajo)
 npm run db:seed               # catálogo de permisos, planes y usuario de plataforma
 npm run db:seed-demo          # clínica de demostración con la que entrar
 ```
+
+> **Migración y cliente, en este orden.** El cliente de Prisma se genera a partir del
+> esquema: tras `migrate deploy` hay que correr `npx prisma generate`. Si no, la API
+> sigue con el cliente VIEJO y un campo recién añadido responde 400 (p. ej.
+> `PATCH /sedes/:id {"activo":false}` tras la migración `5_sede_activo`). El orden es
+> **migrate → generate → tests**; el CI ya lo hace así.
 
 Arranca la API:
 

@@ -206,6 +206,38 @@ describe('Permisos de lectura clínica', () => {
     await request(app.getHttpServer()).get(`/api/usuarios/${datos.a.userId}`).set(adminH).expect(200);
   });
 
+  it('sin users.manage, el listado de usuarios responde 403', async () => {
+    await request(app.getHttpServer()).get('/api/usuarios').set(sinClinicaH).expect(403);
+  });
+
+  it('control: el administrador (con users.manage) sí lista su equipo', async () => {
+    const r = await request(app.getHttpServer()).get('/api/usuarios').set(adminH).expect(200);
+    expect(Array.isArray(r.body)).toBe(true);
+    expect(r.body.map((u: { id: string }) => u.id)).toContain(datos.a.userId);
+  });
+
+  // Catálogo de permisos para el editor de roles: exige `roles.manage`
+  // (con solo agenda no se puede enumerar qué permisos existen).
+  it('sin roles.manage, el catálogo de permisos responde 403', async () => {
+    await request(app.getHttpServer()).get('/api/roles/permisos').set(sinClinicaH).expect(403);
+  });
+
+  it('control: el administrador (con roles.manage) sí lee el catálogo', async () => {
+    const r = await request(app.getHttpServer()).get('/api/roles/permisos').set(adminH).expect(200);
+    expect(Array.isArray(r.body)).toBe(true);
+    expect(r.body.map((p: { codigo: string }) => p.codigo)).toContain('patients.read');
+  });
+
+  // Edición de SEDES: el guard corre antes que la validación, así que el
+  // cuerpo vacío da 403 (no 400) sin el permiso.
+  it('sin sedes.manage, editar una sede responde 403', async () => {
+    await request(app.getHttpServer())
+      .patch(`/api/sedes/${datos.a.sedeId}`)
+      .set(sinClinicaH)
+      .send({})
+      .expect(403);
+  });
+
   // Lectura de SUSCRIPCIÓN. Es información de facturación (plan, periodos):
   // exige `payments.read` y, con permiso, el aislamiento lo da el servicio.
   it('sin payments.read, leer la suscripción propia responde 403', async () => {

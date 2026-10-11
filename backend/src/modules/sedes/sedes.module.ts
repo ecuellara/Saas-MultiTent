@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Injectable, Module, NotFoundException } from '@nestjs/common';
@@ -29,6 +29,28 @@ export class CreateSedeDto {
   esPrincipal?: boolean;
 }
 
+export class UpdateSedeDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  nombre?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  direccion?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  telefono?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+}
+
 type SedeRow = Record<string, unknown> & { id: string; tenantId: string };
 
 type Db = {
@@ -36,6 +58,7 @@ type Db = {
     findMany: (a: unknown) => Promise<SedeRow[]>;
     findUnique: (a: unknown) => Promise<SedeRow | null>;
     create: (a: unknown) => Promise<SedeRow>;
+    update: (a: unknown) => Promise<SedeRow>;
     count: (a: unknown) => Promise<number>;
   };
 };
@@ -67,6 +90,27 @@ export class SedesService {
       throw new NotFoundException('Sede no encontrada');
     }
     return s;
+  }
+
+  /**
+   * Actualización PARCIAL: solo se escribe lo que se envía (`undefined` no
+   * pisa nada). Para vaciar un opcional se envía `null` explícito
+   * (`@IsOptional` lo acepta); para no tocarlo, se omite (convención de los
+   * modales del frontend).
+   */
+  async actualizar(id: string, dto: UpdateSedeDto): Promise<SedeRow> {
+    const ctx = requireTenant();
+    const s = await this.db.sede.findUnique({ where: { id } });
+    if (!s || s.tenantId !== ctx.tenantId) throw new NotFoundException('Sede no encontrada');
+    return this.db.sede.update({
+      where: { id },
+      data: {
+        ...(dto.nombre !== undefined ? { nombre: dto.nombre } : {}),
+        ...(dto.direccion !== undefined ? { direccion: dto.direccion } : {}),
+        ...(dto.telefono !== undefined ? { telefono: dto.telefono } : {}),
+        ...(dto.activo !== undefined ? { activo: dto.activo } : {}),
+      },
+    });
   }
 
   /**
@@ -123,6 +167,12 @@ export class SedesController {
   @Get(':id')
   obtener(@Param('id') id: string): Promise<unknown> {
     return this.service.obtener(id);
+  }
+
+  @Patch(':id')
+  @RequirePermission('sedes.manage')
+  actualizar(@Param('id') id: string, @Body() dto: UpdateSedeDto): Promise<unknown> {
+    return this.service.actualizar(id, dto);
   }
 }
 
