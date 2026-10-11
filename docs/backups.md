@@ -147,3 +147,90 @@ npm run archivos:prueba-restauracion  # simulacro hermético (ver abajo)
 propio, empaqueta, extrae en un directorio limpio y compara **sha256 por
 fichero** + bytes + conteos del manifiesto. Nunca toca el `uploads/` real y lo
 borra todo al terminar, pase o falle.
+
+---
+
+## 9. Respaldo externo (deuda nº 14)
+
+TODO lo anterior queda en `BACKUP_DIR`, en la misma máquina que protege: si
+muere el host (o el disco), se pierden los datos y las copias a la vez.
+`npm run db:backup-remoto` copia los 4 artefactos más recientes (volcado,
+paquete y sus dos manifiestos) a `RESPALDO_REMOTO`, **y verifica la copia
+contra el `sha256` del manifiesto**. Sin verificación no hay copia: si el
+remoto no coincide, el script falla con código != 0.
+
+```bash
+cd backend
+RESPALDO_REMOTO="D:\respaldos" npm run db:backup-remoto
+npm run db:backup-remoto -- --verificar   # solo comprueba lo que ya hay fuera
+npm run db:prueba-respaldo-remoto         # simulacro de la cadena (ver abajo)
+```
+
+Variables (sin valores por defecto donde importa: si falta una, falla):
+
+| Variable | Obligatoria | Para qué |
+|---|---|---|
+| `RESPALDO_REMOTO` | **siempre** | Destino externo. Sin ella el script FALLA (una copia "externa" que no sale de la máquina es peor que no tenerla) |
+| `BACKUP_DIR` | no (`./backups`) | De dónde salen los artefactos |
+| `BACKUP_RETENCION_DIAS` | no (14) | Retención también en el destino (por sello del nombre; solo toca nuestros 4 patrones) |
+| `VIGILANCIA_MAX_HORAS_REMOTO` | no (48) | Umbral de `npm run vigilancia` para la copia externa más reciente |
+
+### 9.1 Modos (los decide la forma del destino)
+
+- **Ruta local o disco montado** (`D:\respaldos`, `/mnt/respaldos`, `\\nas\copias`):
+  copia con node y verifica por `sha256`. Vale para probar sin nada externo
+  y para un disco/NAS montado en el servidor.
+- **Remoto `rclone`** (`b2:bucket/dental-saas`): copia con `rclone copy` y
+  verifica descargando por `rclone cat` + hash (independiente del backend:
+  no se fía del hash que reporte el proveedor). Requiere el binario
+  (`rclone config` antes, con el nombre que uses aquí); **si falta, falla**
+  en lugar de fingir la copia en local.
+
+Nunca se imprime `DATABASE_URL` (el script ni siquiera la lee) ni credenciales.
+
+### 9.2 Restaurar desde el destino
+
+1. Elige el volcado en el destino y **compruébalo primero**:
+   `npm run db:backup-remoto -- --verificar` (con `RESPALDO_REMOTO` apuntando
+   al destino).
+2. Destino local: restaura directamente de ahí
+   (`npm run db:restaurar -- --archivo <destino>/<volcado> --destino <bd> --confirmo-restauracion`,
+   y lo mismo con `archivos:restaurar` para el paquete).
+3. Destino `rclone`: trae primero los 4 ficheros
+   (`rclone copy <remoto>:<dir>/ ./traidos/`) y sigue en el paso 2. La prueba
+   de que la copia externa sirve es restaurar DESDE ella, no el `copy` en verde.
+
+### 9.3 RPO real
+
+Local diario 03:00/03:30 + copia externa 04:00 (timers §5 de `despliegue.md`):
+un dato escrito a las 04:01 se vuelca a las 03:00 del día siguiente y sale
+fuera a las 04:00. **RPO fuera del servidor ≈ 24 h** (el local, el mismo; la
+copia añade ~1 h de rezago, no un día más).
+
+### 9.4 Programación y vigilancia
+
+- Timer `dental-saas-backup-remoto` (04:00, `Persistent=true`, `OnFailure`
+  como los demás): copia lo último que dejaron los dos respaldos. Si un
+  respaldo local falló, copia lo del día anterior (verificado igual); que eso
+  no pase desapercibido lo cubre la vigilancia.
+- `npm run vigilancia` informa la antigüedad de la copia externa más reciente
+  y sale != 0 si supera `VIGILANCIA_MAX_HORAS_REMOTO` (48 h) o si no hay
+  destino configurado. En destinos `rclone` exige el binario para comprobar;
+  sin él informa "revisar" (no comprobable ≠ correcto).
+
+### 9.5 El simulacro del respaldo externo (obligatorio en CI)
+
+`npm run db:prueba-respaldo-remoto` prueba la CADENA, con destino temporal
+(sin nada externo):
+
+1. Vuelca la base y empaqueta fixtures de archivos de verdad.
+2. Copia al destino externo temporal.
+3. **Corrompe la copia remota y exige que la verificación la rechace** (si la
+   aceptara, el simulacro falla: existir no es verificar).
+4. **Borra `BACKUP_DIR`** (el host "muere") y restaura la base DESDE LA COPIA
+   EXTERNA comparando recuentos + última migración, como `prueba-restauracion`.
+5. Extrae el paquete DESDE LA COPIA EXTERNA comparando el mapa de sha256.
+6. Limpia la base temporal y los temporales, pase o falle.
+
+Falla con la base origen vacía (salvo `PERMITIR_SIMULACRO_VACIO=1`), igual que
+el simulacro local: una comparación que no compara nada no prueba nada.

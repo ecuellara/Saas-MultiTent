@@ -59,6 +59,14 @@ jobs:
       # Simulacro de ARCHIVOS: hermético (temporal propio, nunca toca uploads/),
       # así que no depende de los seeds. `tar` viene en la imagen de ubuntu.
       - run: node scripts/prueba-restauracion-archivos.mjs
+      # Simulacro del RESPALDO EXTERNO (deuda nº 14): vuelca, copia a un
+      # destino temporal, corrompe la copia (la verificación debe detectarlo),
+      # borra BACKUP_DIR y restaura DESDE la copia externa comparando filas y
+      # sha256. Sin rclone a propósito: destino local.
+      - run: node scripts/prueba-respaldo-remoto.mjs
+        env:
+          PG_DUMP_BIN: pg_dump
+          PG_RESTORE_BIN: pg_restore
       - run: npm run smoke:arranque
         env:
           DEMO_OWNER_EMAIL: demo@test.pe

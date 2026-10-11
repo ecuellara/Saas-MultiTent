@@ -1,0 +1,21 @@
+# Copia diaria de los respaldos al destino externo (deuda nº 14).
+# Corre DESPUÉS de los dos respaldos (04:00; ellos van 03:00 y 03:30).
+# Ver docs/despliegue.md §5 y docs/backups.md §9.
+#
+# Instalación: igual que dental-saas-db-backup.service (mismo EnvironmentFile,
+# que ADEMÁS debe definir RESPALDO_REMOTO: sin él, este servicio falla a
+# propósito en lugar de fingir una copia externa).
+[Unit]
+Description=Copia diaria de respaldos al destino externo
+After=dental-saas-db-backup.service dental-saas-archivos-backup.service
+OnFailure=dental-saas-aviso@%n.service
+
+[Service]
+Type=oneshot
+User=dental
+WorkingDirectory=/opt/dental-saas/backend
+EnvironmentFile=/etc/dental-saas/backend.env
+ExecStart=/usr/bin/npm run db:backup-remoto
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dental-backup-remoto

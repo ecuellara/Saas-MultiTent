@@ -229,9 +229,12 @@ cp deploy/systemd/dental-saas-* /etc/systemd/system/
 #   BACKUP_RETENCION_DIAS=14  UPLOADS_DIR=/opt/dental-saas/uploads
 #   PG_DUMP_BIN=/usr/bin/pg_dump  PG_RESTORE_BIN=/usr/bin/pg_restore
 #   VIGILANCIA_API_URL=http://127.0.0.1:3000
+#   RESPALDO_REMOTO=/mnt/respaldos  (o `b2:bucket/dental-saas`; sin él,
+#     el servicio de copia externa falla a propósito)
 systemctl daemon-reload
 systemctl enable --now dental-saas-db-backup.timer
 systemctl enable --now dental-saas-archivos-backup.timer
+systemctl enable --now dental-saas-backup-remoto.timer
 systemctl enable --now dental-saas-vigilancia.timer
 systemctl list-timers --all | grep dental
 journalctl -u dental-saas-db-backup -e
@@ -287,22 +290,14 @@ nº 1).
 
 ---
 
-## 7. Copia fuera del servidor (PENDIENTE, dicho explícitamente)
+## 7. Copia fuera del servidor
 
-Hoy los volcados viven **en la misma máquina que protegen** (`BACKUP_DIR`
-local o el volumen `staging-backups`). Eso cubre borrados y corrupciones,
-NO la pérdida del servidor. El destino externo queda configurado así
-(pendiente de ejecutar: ver `deuda-tecnica.md`):
-
-```bash
-# Opción A: otro host por SSH (el manifiesto viaja con el volcado).
-rsync -avz --delete /var/backups/dental-saas/ copia:/srv/copias/dental-saas/
-# Opción B: almacenamiento de objetos (tras `rclone config`).
-rclone sync /var/backups/dental-saas/ remoto:copias-dental-saas/ --checksum
-```
-
-En ambos casos, la prueba de que sirve es restaurar DESDE la copia externa
-(`db:prueba-restauracion` contra el archivo copiado), no el `sync` en verde.
+El mecanismo existe (`npm run db:backup-remoto`, ver `backups.md` §9:
+verificación sha256, simulacro de cadena en CI, timer 04:00 y vigilancia de
+antigüedad). Lo que sigue pendiente es el **destino de producción**: contratar
+o montar el disco/remoto, definir `RESPALDO_REMOTO` en el entorno del servidor
+(`rclone config` antes si es un remoto `rclone`) y probar la restauración
+desde él. Detalle en `deuda-tecnica.md` (nº 14).
 
 ---
 

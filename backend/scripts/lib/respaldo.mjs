@@ -77,6 +77,38 @@ export function selloUtc(fecha = new Date()) {
 }
 
 /**
+ * Extrae la fecha UTC del sello `AAAAMMDD-HHMMSS` incrustado en un nombre de
+ * artefacto (`<base>-AAAAMMDD-HHMMSS.dump`, `archivos-AAAAMMDD-HHMMSS.tar.gz`
+ * o sus manifiestos). Devuelve `null` si no hay sello válido: el llamador
+ * decide (fallar en voz alta, nunca adivinar por mtime).
+ */
+export function extraerSello(nombre) {
+  const m = /(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(nombre);
+  if (!m) return null;
+  const [, anio, mes, dia, hh, mm, ss] = m.map(Number);
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31 || hh > 23 || mm > 59 || ss > 59) return null;
+  return new Date(Date.UTC(anio, mes - 1, dia, hh, mm, ss));
+}
+
+/**
+ * ¿El destino del respaldo externo es un remoto `rclone` (`b2:bucket/...`)
+ * o una ruta local/disco montado (`D:\respaldos`, `/mnt/respaldos`)?
+ *
+ * Local es: absoluta Windows (`C:\`, `C:/`, `C:rel`, UNC `\\`), absoluta
+ * POSIX (`/`), `~`, relativa (`./`, `../`, nombre suelto) o cualquier cosa
+ * sin dos puntos. Todo lo demás con forma `nombre:resto` es rclone.
+ */
+export function esDestinoRclone(destino) {
+  const d = String(destino ?? '').trim();
+  if (!d) return false;
+  if (/^[A-Za-z]:/.test(d)) return false; // unidad Windows, incl. `C:rel`
+  if (d.startsWith('\\\\')) return false; // UNC
+  if (d.startsWith('/') || d.startsWith('~') || d.startsWith('.')) return false;
+  if (!d.includes(':')) return false; // relativo sin dos puntos
+  return /^[A-Za-z0-9_][A-Za-z0-9_.~-]*:/.test(d);
+}
+
+/**
  * Motor de ejecución de los binarios de Postgres.
  * - Si `PG_DUMP_BIN` y `PG_RESTORE_BIN` están definidos: modo local (CI,
  *   servidores con cliente instalado).

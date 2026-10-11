@@ -1,0 +1,12 @@
+# Timer de la copia externa (04:00, tras los respaldos locales, con catch-up
+# si el servidor estuvo apagado).
+[Unit]
+Description=Copia diaria de respaldos al destino externo (04:00)
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target
