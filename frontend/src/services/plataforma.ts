@@ -198,3 +198,20 @@ export async function listarPlanes(): Promise<Plan[]> {
 export async function asignarPlan(tenantId: string, planCodigo: string): Promise<void> {
   await plataforma.put('/platform/subscriptions', { tenantId, planCodigo })
 }
+
+export interface CargaCatalogo {
+  creados: number
+  omitidos: number
+}
+
+/**
+ * Carga el catálogo de ejemplo en la clínica (opt-in, nunca automático).
+ * Idempotente por nombre: pulsar dos veces no duplica. Los precios son de
+ * EJEMPLO y la clínica debe revisarlos (lo advierte el confirm del panel).
+ */
+export async function cargarCatalogoEjemplo(tenantId: string): Promise<CargaCatalogo> {
+  const { data } = await plataforma.post<CargaCatalogo>(
+    `/platform/tenants/${tenantId}/catalogo-ejemplo`,
+  )
+  return data
+}

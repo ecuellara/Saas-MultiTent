@@ -1,9 +1,10 @@
 # Despliegue: staging, ensayo de migración y rollback
 
 Este documento es el procedimiento ejecutable de la Fase 9 (staging, rollback
-documentado, alertas) y el campo de ensayo de la Fase 4 (migrar la clínica
-real). Todo lo que dice «ejecuta» está probado tal cual en Windows + Docker
-Desktop; si algo no cuadra, es un bug del documento, no del lector.
+documentado, alertas) y el campo de ensayo de migraciones con datos (futura
+Fase 4 si una clínica trae datos; la actual no tiene). Todo lo que dice
+«ejecuta» está probado tal cual en Windows + Docker Desktop; si algo no
+cuadra, es un bug del documento, no del lector.
 
 > Procedimiento de copias (origen de varios pasos de aquí):
 > [docs/backups.md](backups.md).
@@ -107,10 +108,13 @@ de desarrollo.
 
 ---
 
-## 3. Ensayo de la migración de la clínica (Fase 4, sin tocar producción)
+## 3. Ensayo de una migración con datos (futuras clínicas, sin tocar producción)
 
-> NO ejecutes la migración real aquí: esto PREPARA el ensayo. La migración la
-> corre un humano cuando toque, siguiendo estos mismos pasos.
+> NO es un paso del lanzamiento: la clínica actual no tiene datos que migrar
+> (ver Fase 4 en `dental-saas-arquitectura-v2.md`). Esto se conserva como
+> procedimiento para una clínica futura que SÍ traiga datos. NO ejecutes la
+> migración real aquí: esto PREPARA el ensayo. La migración la corre un humano
+> cuando toque, siguiendo estos mismos pasos.
 
 Supuestos: el stack de staging levantado (§1) y una copia de producción
 accesible. `PG_DOCKER_CONTAINER` apunta al postgres de staging para que los
@@ -310,10 +314,13 @@ desde él. Detalle en `deuda-tecnica.md` (nº 14).
 - Imagen fijada por tag/digest (`dental-api:<version>`, no `staging`), y el
   tag anterior a mano para el rollback (§4.1 paso 4).
 - `BACKUP_DIR` en disco del servidor + copia externa (§7) + timers (§5.1).
+- El primer cliente se da de alta desde el panel y empieza de cero (NO hay
+  migración en el lanzamiento): su primer día está guiado en
+  [docs/primeros-pasos-clinica.md](primeros-pasos-clinica.md).
 
 Checklist previo al corte: suite verde, simulacro de restauración verde,
-ensayo de migración en staging verde (§3), backup expreso verificado,
-rollback preparado (§4), ventana comunicada.
+backup expreso verificado, rollback preparado (§4), ventana comunicada.
+(El "ensayo de migración en staging" solo aplica si una clínica trae datos.)
 
 ---
 

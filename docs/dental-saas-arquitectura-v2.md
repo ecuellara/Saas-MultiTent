@@ -1582,13 +1582,22 @@ GET /health/version
 
 **Salida:** recibos de dos tenants no colisionan; arqueo de caja por tenant correcto.
 
-### Fase 4 — Migración de la clínica actual (1 semana)
+### Fase 4 — Alta del primer cliente (1 semana)
 
-- Script idempotente: crear `Tenant` + `Sede` + `User` admin + `Membership` + roles; backfill de `tenantId`; verificar integridad referencial.
-- Backup completo antes; validar en staging primero; rollback documentado.
-- Procedimiento ejecutable (ensayo paso a paso + rollback medido): [docs/despliegue.md](despliegue.md) §3 y §4.
+> La clínica actual nunca se puso en producción: NO hay datos que migrar y
+> esta fase ya no es una migración. El primer cliente se da de alta desde el
+> panel (`POST /platform/tenants`) y empieza de cero.
 
-**Salida:** la clínica actual opera como primer tenant sin pérdida de datos.
+- Alta por panel probada de punta a punta (`test/aceptacion-alta.e2e-spec.ts`):
+  sede, rol ADMIN con todo el catálogo, config sin horario, suscripción.
+- Guía del primer día: [docs/primeros-pasos-clinica.md](primeros-pasos-clinica.md)
+  (horario, tratamientos, sedes, usuarios, plantillas, insumos opcionales).
+- `db:migrar-clinica` queda DOCUMENTADO para el caso futuro (una clínica que
+  SÍ traiga datos), con ensayo en staging y rollback ([docs/despliegue.md](despliegue.md)
+  §3 y §4): no es un paso del lanzamiento y nadie debe esperarlo.
+
+**Salida:** el primer cliente opera desde cero sin pérdida (porque no hay nada
+que perder) y con el primer día guiado.
 
 ### Fase 5 — Roles, permisos y entitlements (2-3 semanas)
 
@@ -1739,7 +1748,7 @@ Fixture de **dos tenants** (`A`, `B`) y un test por módulo que intenta acceder 
 | Riesgo | Probabilidad | Impacto | Mitigación |
 |---|---|---|---|
 | Fuga de datos entre tenants | Media | Crítico | Extensión + tests de aislamiento + RLS (etapa 2) + auditoría de accesos cruzados |
-| Migración destructiva de la clínica actual | Media | Crítico | Backup previo, staging, script idempotente, rollback documentado |
+| Migración con datos de una clínica futura | Baja (hoy no hay datos que migrar) | Crítico | `db:migrar-clinica` documentado + ensayo en staging + rollback ([despliegue.md](despliegue.md) §3 y §4); no es paso del lanzamiento |
 | Cobros duplicados de suscripción | Media | Alto | Idempotencia + firma de webhooks |
 | Regresión del modelo clínico (NTS 188, consentimientos) | Alta (si se usa el v1) | Alto | Esquema de la sección 6 conserva el modelo actual |
 | Errores silenciosos por `service_role` + RLS mal configurado | Media | Alto | RLS pospuesto a etapa 2 con rol dedicado |
@@ -1754,7 +1763,10 @@ Fixture de **dos tenants** (`A`, `B`) y un test por módulo que intenta acceder 
 2. Validar el esquema Prisma (sección 6) con `prisma validate` y `prisma migrate dev` en una BD de desarrollo.
 3. Implementar Fase 0 y Fase 1.
 4. Escribir los tests de aislamiento como primera tarea de la Fase 1 (test-first para el núcleo de aislamiento).
-5. Migrar la clínica actual como primer tenant (Fase 4).
+5. Dar de alta el primer cliente desde el panel y guiar su primer día
+   ([primeros-pasos-clinica.md](primeros-pasos-clinica.md), probado en
+   `aceptacion-alta.e2e-spec.ts`). La migración de la clínica actual NO se
+   ejecuta: no hay datos (ver Fase 4).
 6. Incorporar el segundo cliente **solo** cuando las pruebas de aislamiento pasen en CI.
 
 ---

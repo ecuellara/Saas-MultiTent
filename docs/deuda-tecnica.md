@@ -439,3 +439,7 @@ Para que no se confunda con lo anterior:
   devuelve 404. Hay 33 pruebas de aislamiento que lo vigilan.
 - **El pooler de Supabase y las migraciones** dependen de la configuración del
   hosting, no del código.
+- **`db:migrar-clinica` no se ejecuta en el lanzamiento.** La clínica actual no
+  tiene datos que migrar, así que la Fase 4 es alta desde el panel + primer día
+  guiado. El script queda documentado (`despliegue.md` §3) para una clínica
+  futura que sí traiga datos; que nadie lo espere el día del corte.

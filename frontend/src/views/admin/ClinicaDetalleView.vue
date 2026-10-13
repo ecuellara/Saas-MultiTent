@@ -8,6 +8,7 @@ import { mensajeDeError } from '../../services/errores'
 import {
   actualizarClinica,
   asignarPlan,
+  cargarCatalogoEjemplo,
   exportarClinica,
   listarPlanes,
   metricasClinica,
@@ -29,6 +30,8 @@ const cargando = ref(true)
 const error = ref('')
 const procesando = ref(false)
 const confirmarAccion = ref<'SUSPENDED' | 'ACTIVE' | null>(null)
+const confirmarCatalogo = ref(false)
+const resultadoCatalogo = ref('')
 const exportando = ref(false)
 
 async function cargar(): Promise<void> {
@@ -94,6 +97,25 @@ async function descargarExport(): Promise<void> {
     error.value = mensajeDeError(e, 'No se pudo exportar')
   } finally {
     exportando.value = false
+  }
+}
+
+async function confirmarCargaCatalogo(): Promise<void> {
+  procesando.value = true
+  error.value = ''
+  resultadoCatalogo.value = ''
+  try {
+    const r = await cargarCatalogoEjemplo(id)
+    confirmarCatalogo.value = false
+    resultadoCatalogo.value =
+      r.creados > 0
+        ? `Catálogo cargado: ${r.creados} tratamiento${r.creados === 1 ? '' : 's'} creado${r.creados === 1 ? '' : 's'}${r.omitidos > 0 ? ` (${r.omitidos} ya existían)` : ''}. Revisa los precios de ejemplo.`
+        : 'La clínica ya tenía todo el catálogo: no se creó nada.'
+    await cargar()
+  } catch (e) {
+    error.value = mensajeDeError(e, 'No se pudo cargar el catálogo')
+  } finally {
+    procesando.value = false
   }
 }
 
@@ -165,7 +187,16 @@ onMounted(cargar)
         >
           {{ exportando ? 'Exportando…' : 'Exportar JSON' }}
         </button>
+        <button
+          class="rounded-md border border-line px-3 py-1.5 text-sm text-ink hover:bg-background-soft disabled:opacity-60"
+          :disabled="procesando"
+          @click="confirmarCatalogo = true"
+        >
+          Cargar catálogo de ejemplo
+        </button>
       </div>
+
+      <p v-if="resultadoCatalogo" class="text-sm text-muted">{{ resultadoCatalogo }}</p>
 
       <AvisoError v-if="error" :mensaje="error" />
     </div>
@@ -179,6 +210,16 @@ onMounted(cargar)
       :ocupado="procesando"
       @confirmar="cambiarEstado(confirmarAccion)"
       @cancelar="confirmarAccion = null"
+    />
+
+    <ModalConfirmar
+      v-if="confirmarCatalogo"
+      titulo="Cargar catálogo de ejemplo"
+      mensaje="Crea los tratamientos típicos que aún no existan (no duplica ni pisa lo que la clínica ya creó). Los precios son de EJEMPLO: hay que revisarlos antes de cobrar."
+      texto-confirmar="Cargar catálogo"
+      :ocupado="procesando"
+      @confirmar="confirmarCargaCatalogo"
+      @cancelar="confirmarCatalogo = false"
     />
   </div>
 </template>

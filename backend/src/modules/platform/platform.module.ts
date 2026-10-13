@@ -19,6 +19,7 @@ import { EntitlementsService } from '../../core/entitlements/entitlements.servic
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { LoginDto } from '../auth/login.dto.js';
 import { CATALOGO_PERMISOS } from '../../core/catalogo/permisos.js';
+import { CATALOGO_EJEMPLO_TRATAMIENTOS } from '../../core/catalogo/ejemplo.js';
 import {
   CookieSpec,
   TokenPair,
@@ -523,6 +524,39 @@ export class PlatformService {
   }
 
   /**
+   * Catálogo de ejemplo (opt-in del panel, nunca automático).
+   *
+   * Crea en el tenant los tratamientos de `CATALOGO_EJEMPLO_TRATAMIENTOS` que
+   * aún no existan por nombre (idempotente: pulsar dos veces no duplica, y lo
+   * que la clínica ya creó a mano se respeta). Los precios son de EJEMPLO: la
+   * clínica debe revisarlos (ver la cabecera del catálogo).
+   */
+  async cargarCatalogoEjemplo(tenantId: string): Promise<{ creados: number; omitidos: number }> {
+    const t = await this.db.tenant.findUnique({ where: { id: tenantId } });
+    if (!t) throw new NotFoundException('Tenant no encontrado');
+    const db = this.prisma as unknown as {
+      tratamiento: {
+        findFirst: (a: unknown) => Promise<{ id: string } | null>;
+        create: (a: unknown) => Promise<unknown>;
+      };
+    };
+    let creados = 0;
+    let omitidos = 0;
+    for (const e of CATALOGO_EJEMPLO_TRATAMIENTOS) {
+      const existe = await db.tratamiento.findFirst({ where: { tenantId, nombre: e.nombre } });
+      if (existe) {
+        omitidos++;
+        continue;
+      }
+      await db.tratamiento.create({
+        data: { tenantId, nombre: e.nombre, precio: e.precio, duracionMin: e.duracionMin },
+      });
+      creados++;
+    }
+    return { creados, omitidos };
+  }
+
+  /**
    * Alta completa de clínica EN UNA TRANSACCIÓN (Fase 6 §14): Tenant +
    * TenantConfig + Sede principal + Rol ADMIN (permisos del catálogo) + User
    * dueño (clave por parámetro, nunca por defecto — bloqueador #2) +
@@ -913,6 +947,18 @@ export class PlatformController {
   @HttpCode(201)
   crearTenant(@Body() dto: CreateTenantDto): Promise<unknown> {
     return this.service.crearTenant(dto);
+  }
+
+  /**
+   * Solo `owner`: carga el catálogo de ejemplo en una clínica (opt-in del
+   * panel, nunca automático). Va DESPUÉS de `@Post('tenants')` y con ruta
+   * propia: `tenants` exacto no lo captura.
+   */
+  @PlatformRoles('owner')
+  @Post('tenants/:id/catalogo-ejemplo')
+  @HttpCode(201)
+  cargarCatalogoEjemplo(@Param('id') id: string): Promise<unknown> {
+    return this.service.cargarCatalogoEjemplo(id);
   }
 
   @Get('tenants/:id/metricas')
