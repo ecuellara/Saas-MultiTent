@@ -1704,42 +1704,48 @@ Fixture de **dos tenants** (`A`, `B`) y un test por módulo que intenta acceder 
 
 ## 17. Checklist antes de vender
 
+> **Revisado el 2026-10-13: 27 items — 25 probados, 2 parciales.** Cada marca lleva su
+> evidencia, y lo que no está probado NO está marcado. Base de la revisión: la suite
+> completa (228 pruebas e2e), el arranque real del binario compilado, el stack de staging
+> levantado y comprobado, y las auditorías de aislamiento, permisos, respaldos y alta del
+> primer cliente. Los dos parciales coinciden con deuda registrada.
+
 ### Arquitectura
-- [ ] Modelo multi-tenant implementado (extensión + guards).
-- [ ] `tenantId` derivado de sesión/membresía, nunca del body.
-- [ ] Ninguna consulta permite acceso cruzado (tests verdes).
-- [ ] API stateless.
-- [ ] Filtro global de excepciones.
-- [ ] Health checks.
+- [x] Modelo multi-tenant implementado (extensión + guards). — `$extends` por `$allOperations` + cadena `TenantGuard`/`PermissionsGuard`/`PlatformGuard` sobre `AsyncLocalStorage`.
+- [x] `tenantId` derivado de sesión/membresía, nunca del body. — Invariante 1 comprobado en todas las auditorías; `forbidNonWhitelisted` rechaza un `tenantId` en el cuerpo (400).
+- [x] Ninguna consulta permite acceso cruzado (tests verdes). — Suite de aislamiento más cruces bidireccionales **provocados por HTTP** (pacientes, consentimientos, odontogramas, sedes, usuarios, alta).
+- [x] API stateless. — JWT; la clínica activa viaja en cada petición y el guard la resuelve contra la membresía.
+- [x] Filtro global de excepciones. — `GlobalExceptionFilter` en `main.ts` y montado por `montarAppE2E` en todas las pruebas.
+- [x] Health checks. — `GET /api/health` con `status` y `database: ok`; lo usan el compose (HEALTHCHECK), el smoke, el CI y la vigilancia.
 
 ### Seguridad
-- [ ] Sin credenciales por defecto.
-- [ ] Rate limit de login + `trust proxy`.
-- [ ] Argon2id (o bcrypt con plan de migración).
-- [ ] JWT corto + refresh httpOnly.
-- [ ] CORS correcto (con trim).
-- [ ] Validación de DTO global.
-- [ ] Control de archivos (MIME por contenido + contención de rutas).
-- [ ] Secrets fuera del repo.
+- [x] Sin credenciales por defecto. — Los seeds fallan sin variables; el alta exige contraseña de 12+; la API no arranca sin `JWT_SECRET`.
+- [x] Rate limit de login + `trust proxy`. — **Provocado en vivo: 401×4 y 429 en el 5.º intento** (`LOGIN_POR_EMAIL=5`); `TRUST_PROXY` configurable y validado (el arranque falla si es inválido).
+- [x] Argon2id (o bcrypt con plan de migración). — El hash nuevo es siempre Argon2id y los bcrypt **se migran al iniciar sesión** (`upgradedHash` → `passwordAlgo: 'argon2id'`).
+- [x] JWT corto + refresh httpOnly. — Access de **15 min**; refresh en cookie `httpOnly` con **rotación** (el presentado se revoca), revocación en base y logout que la borra.
+- [x] CORS correcto (con trim). — Orígenes explícitos desde `FRONTEND_URL` con `.trim()` y `credentials: true` (necesario para la cookie).
+- [x] Validación de DTO global. — `ValidationPipe` con `whitelist`, `forbidNonWhitelisted` y `transform`; DTO como clase con decoradores.
+- [x] Control de archivos (MIME por contenido + contención de rutas). — Magic bytes (`firmarMime`) en documentos y firmas, `resolverLocal` con contención y `assertClaveTenant`.
+- [x] Secrets fuera del repo. — `.env` y `.env.staging` ignorados; los ejemplos y el compose solo llevan marcadores; la auditoría redacta secretos.
 
 ### Datos
-- [ ] Migraciones Prisma versionadas.
-- [ ] Índices y uniques por tenant.
-- [ ] Soft delete uniforme.
-- [ ] Backups + restauración probada.
+- [x] Migraciones Prisma versionadas. — `0_init`…`5_sede_activo`; `migrate deploy` (+ `generate`) en CI, con el orden documentado en `como-probar.md` y `despliegue.md`.
+- [x] Índices y uniques por tenant. — Uniques compuestos por tenant (p. ej. `[tenantId, pacienteId, version]`) e índices de consulta (ADR-002).
+- [x] Soft delete uniforme. — `deletedAt` con la misma convención en los 10 modelos donde borrar es una operación real (Tenant, Sede, Role, Paciente, DocumentoPaciente, Tratamiento, Cita, Pago, Proveedor, Insumo); lo que se **anula** usa `activo`/`estado`, y la auditoría es append-only. No es «todos los modelos»: es el conjunto correcto.
+- [x] Backups + restauración probada. — Local y externo con `sha256`, simulacros de cadena en CI y **restauración hecha solo desde la copia externa** (con `BACKUP_DIR` apartado del disco).
 
 ### SaaS
-- [ ] Tenants, sedes, membresías, roles.
-- [ ] Planes, suscripciones, entitlements.
-- [ ] Panel administrativo separado.
-- [ ] Numeración por tenant.
+- [x] Tenants, sedes, membresías, roles. — Alta transaccional desde el panel (probada de punta a punta) y ABM en la clínica.
+- [x] Planes, suscripciones, entitlements. — Límites numéricos aplicados (`max_sedes`, `max_usuarios`) con 403 y recuento real del uso.
+- [x] Panel administrativo separado. — `/admin` con login propio y las rutas de plataforma tras `PlatformGuard`.
+- [x] Numeración por tenant. — ADR-007 (correlativos por clínica, con las fechas en UTC); ver deuda 5 (reciclado del código más alto).
 
 ### Operación
-- [ ] Logs estructurados.
-- [ ] Monitoreo y alertas.
-- [ ] CI/CD con staging.
-- [ ] Auditoría append-only.
-- [ ] Documentación y procedimiento de soporte.
+- [x] Logs estructurados. — JSON por petición con `requestId`, `tenantId`, `userId`, `route`, `latency` y `status`.
+- [ ] **Monitoreo y alertas — PARCIAL.** La vigilancia (salud, tasa de fallos, acceso cruzado y **antigüedad de la copia externa**, con salida 0/1/2) y los timers systemd con `OnFailure` existen y están probados, pero **falta el canal real de aviso**: `avisos.sh` está vacío (**deuda 15**).
+- [x] CI/CD con staging. — El pipeline migra, corre la suite, los simulacros de respaldo, el arranque real y **levanta el staging comprobando `/api/health` por el proxy y en directo**. El despliegue a producción es manual porque todavía no hay servidor.
+- [x] Auditoría append-only. — El interceptor crea filas con redacción de secretos y nada las modifica; ver deuda 1 (los rechazos de guard no se auditan).
+- [ ] **Documentación y procedimiento de soporte — PARCIAL.** La documentación es amplia (arquitectura, despliegue, respaldos, cómo probar, primeros pasos, deuda), pero **falta el procedimiento de incidentes**: qué mirar, en qué orden, cómo restaurar y a quién avisar.
 
 ---
 
