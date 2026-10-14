@@ -31,4 +31,11 @@ test('toothMeta deriva tipo, arcada, superficie oclusal/incisal y palatina/lingu
   assert.equal(toothMeta('36').superior, false) // lingual (L)
   assert.equal(toothMeta('55').decidua, true)
   assert.equal(toothMeta('85').decidua, true)
+  // En la dentición decidua NO hay premolares: las posiciones 4 y 5 son el
+  // primer y segundo molar temporal (si no, se dibujan con corona de premolar).
+  assert.equal(toothMeta('54').tipo, 'molar')
+  assert.equal(toothMeta('55').tipo, 'molar')
+  assert.equal(toothMeta('53').tipo, 'canino')
+  assert.equal(toothMeta('85').tipo, 'molar')
+  assert.equal(toothMeta('45').tipo, 'premolar') // permanente: aquí sí hay premolar
 })

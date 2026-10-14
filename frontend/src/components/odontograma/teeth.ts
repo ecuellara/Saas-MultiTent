@@ -54,8 +54,22 @@ export function toothMeta(fdi: string): ToothMeta {
   const quadrant = Number(fdi[0]);
   const position = Number(fdi[1]);
   const decidua = quadrant >= 5;
-  const tipo: ToothTemplate =
-    position <= 2 ? 'incisivo' : position === 3 ? 'canino' : position <= 5 ? 'premolar' : 'molar';
+  // En la dentición decidua NO hay premolares: la posición 4 es el primer molar
+  // temporal y la 5 el segundo (FDI). Sin esta distinción, 54/55/64/65/74/75/
+  // 84/85 se dibujaban con la corona de un premolar.
+  const tipo: ToothTemplate = decidua
+    ? position <= 2
+      ? 'incisivo'
+      : position === 3
+        ? 'canino'
+        : 'molar'
+    : position <= 2
+      ? 'incisivo'
+      : position === 3
+        ? 'canino'
+        : position <= 5
+          ? 'premolar'
+          : 'molar';
   const base = decidua ? NOMBRES_TEMP[position - 1] : NOMBRES_PERM[position - 1];
   return {
     fdi,
