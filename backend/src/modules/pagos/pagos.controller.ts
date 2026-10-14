@@ -3,24 +3,11 @@ import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
 import { AbonoDto, CreatePagoDto } from './pagos.dto.js';
 import { PagosService } from './pagos.service.js';
-import { IzipayService } from './izipay.service.js';
 
 @ApiTags('pagos')
 @Controller('pagos')
 export class PagosController {
-  constructor(private readonly service: PagosService, private readonly izipay: IzipayService) {}
-
-  @Post(':id/izipay/formtoken')
-  @RequirePermission('payments.write')
-  formtoken(@Param('id') id: string): Promise<unknown> {
-    return this.izipay.formtoken(id);
-  }
-
-  @Post(':id/izipay/validar')
-  @RequirePermission('payments.write')
-  validarIzipay(@Param('id') id: string, @Body() body: Record<string, unknown>): Promise<unknown> {
-    return this.izipay.validarRetorno(id, body);
-  }
+  constructor(private readonly service: PagosService) {}
 
   @Get()
   @RequirePermission('payments.read')

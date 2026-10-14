@@ -1,5 +1,12 @@
 # Izipay: etapa 1 — pagos únicos al paciente
 
+> **DOCUMENTO HISTÓRICO (retirado del código).** Por decisión de producto la
+> pasarela es SOLO para el plan de la clínica; los endpoints
+> `/pagos/:id/izipay/*` y su UI ya no existen. Diseño vigente en
+> [izipay-suscripcion.md](izipay-suscripcion.md). Se conserva este archivo
+> como referencia del contrato verificado en sandbox (firma cruda,
+> idempotencia, céntimos).
+
 ## Contrato implementado
 
 - `POST /api/pagos/:id/izipay/formtoken`: JWT, tenant validado y

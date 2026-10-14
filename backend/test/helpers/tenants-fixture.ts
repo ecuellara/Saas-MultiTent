@@ -66,6 +66,7 @@ export const PERMISOS_BASE = [
   { codigo: 'payments.read', recurso: 'payments', accion: 'read' },
   { codigo: 'payments.write', recurso: 'payments', accion: 'write' },
   { codigo: 'payments.cancel', recurso: 'payments', accion: 'cancel' },
+  { codigo: 'billing.manage', recurso: 'billing', accion: 'manage' },
   { codigo: 'inventory.read', recurso: 'inventory', accion: 'read' },
   { codigo: 'inventory.write', recurso: 'inventory', accion: 'write' },
   { codigo: 'consents.read', recurso: 'consents', accion: 'read' },

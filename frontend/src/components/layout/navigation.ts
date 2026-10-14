@@ -6,6 +6,7 @@ import {
   CalendarDaysIcon,
   ClipboardDocumentCheckIcon,
   Cog6ToothIcon,
+  CreditCardIcon,
   HomeIcon,
   ShoppingCartIcon,
   TagIcon,
@@ -51,6 +52,7 @@ export const NAVEGACION: ItemNavegacion[] = [
   { etiqueta: 'Compras', ruta: '/compras', icono: ShoppingCartIcon, permiso: 'inventory.read', seccion: 'Operación' },
   { etiqueta: 'Proveedores', ruta: '/proveedores', icono: TruckIcon, permiso: 'inventory.read', seccion: 'Operación' },
   { etiqueta: 'Usuarios', ruta: '/usuarios', icono: UserGroupIcon, permiso: 'users.manage', seccion: 'Administración' },
+  { etiqueta: 'Mi plan', ruta: '/mi-plan', icono: CreditCardIcon, permiso: 'billing.manage', seccion: 'Administración' },
   { etiqueta: 'Sedes', ruta: '/sedes', icono: BuildingOfficeIcon, permiso: 'sedes.manage', seccion: 'Administración' },
   { etiqueta: 'Configuración', ruta: '/configuracion', icono: Cog6ToothIcon, seccion: 'Sistema' },
 ]

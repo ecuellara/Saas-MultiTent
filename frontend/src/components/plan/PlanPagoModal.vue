@@ -1,19 +1,21 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { prepararIzipay, validarRetornoIzipay } from '../../services/pagos'
+import { prepararPlanFormToken, validarRetornoPlan } from '../../services/facturacion'
 import { montarSmartForm, type FormularioIzipay } from '../../services/izipay-form'
 import { mensajeDeError } from '../../services/errores'
 import AvisoError from '../ui/AvisoError.vue'
 import ModalBase from '../ui/ModalBase.vue'
 
-const props = defineProps<{ pagoId: string }>()
-const emit = defineEmits<{ cerrar: [mensaje: string]; revisar: []; exito: [] }>()
+/** Modal de pago del PLAN (cobro de suscripción). Parametrizado por el cobro
+ * que devuelve el backend; nunca recibe importes del exterior. */
+const emit = defineEmits<{ cerrar: [mensaje: string]; revisar: []; exito: [cobroId: string] }>()
 const error = ref('')
 const mensaje = ref('Preparando formulario seguro…')
 let activo = true
 let resultadoRecibido = false
 let formulario: FormularioIzipay | undefined
 let aceptado = false
+let cobroId = ''
 
 function cerrar(): void {
   activo = false
@@ -23,15 +25,16 @@ function cerrar(): void {
 
 onMounted(async () => {
   try {
-    const { formToken, publicKey } = await prepararIzipay(props.pagoId)
+    const preparado = await prepararPlanFormToken()
+    cobroId = preparado.cobroId
     if (!activo) return
     formulario = montarSmartForm({
-      formToken, publicKey,
+      formToken: preparado.formToken, publicKey: preparado.publicKey,
       alResultado: async (resultado) => {
         if (!activo || aceptado) return
         mensaje.value = 'Verificando la respuesta de Izipay…'
         try {
-          const validacion = await validarRetornoIzipay(props.pagoId, resultado)
+          const validacion = await validarRetornoPlan(resultado)
           if (!activo) return
           error.value = ''
           resultadoRecibido = true
@@ -39,7 +42,7 @@ onMounted(async () => {
           mensaje.value = aceptado
             ? 'Pago pendiente de confirmar. Esperando la notificación de Izipay.'
             : 'Pago rechazado. Puede volver a intentar o cerrar el formulario.'
-          if (aceptado) emit('exito')
+          if (aceptado) emit('exito', cobroId)
           else emit('revisar')
         } catch (e) {
           if (activo) {
@@ -70,7 +73,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ModalBase titulo="Cobrar en línea" @cerrar="cerrar">
+  <ModalBase titulo="Pagar el plan" @cerrar="cerrar">
     <AvisoError v-if="error" :mensaje="error" class="mb-3" />
     <p class="mb-3 text-sm text-muted" role="status">{{ mensaje }}</p>
     <div id="micuentawebstd_rest_wrapper">

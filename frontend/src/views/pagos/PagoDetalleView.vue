@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AbonoModal from '../../components/pagos/AbonoModal.vue'
-import IzipayModal from '../../components/pagos/IzipayModal.vue'
 import AvisoError from '../../components/ui/AvisoError.vue'
 import CargandoBloque from '../../components/ui/CargandoBloque.vue'
 import EstadoVacio from '../../components/ui/EstadoVacio.vue'
@@ -31,8 +30,6 @@ const cargando = ref(true)
 const error = ref('')
 const noExiste = ref(false)
 const modalAbono = ref(false)
-const modalIzipay = ref(false)
-const avisoIzipay = ref('')
 const porAnular = ref(false)
 const ocupada = ref(false)
 
@@ -67,26 +64,6 @@ async function cargar(): Promise<void> {
 }
 
 onMounted(cargar)
-
-async function revisarIzipay(): Promise<void> {
-  try {
-    pago.value = await obtenerPago(id)
-    if (pago.value.estado === 'pagado') avisoIzipay.value = 'Pago confirmado por Izipay.'
-  } catch (e) {
-    error.value = mensajeDeError(e, 'No se pudo actualizar el estado del pago')
-  }
-}
-
-async function cerrarIzipay(mensaje: string): Promise<void> {
-  modalIzipay.value = false
-  avisoIzipay.value = mensaje
-  await revisarIzipay()
-}
-
-async function alExitoIzipay(): Promise<void> {
-  modalIzipay.value = false
-  await router.push({ name: 'pago-resultado', params: { id } })
-}
 
 async function alAbonar(actualizado: Pago): Promise<void> {
   modalAbono.value = false
@@ -124,7 +101,6 @@ async function confirmarAnulacion(): Promise<void> {
     />
     <template v-else-if="pago">
       <AvisoError v-if="error" class="mb-4" :mensaje="error" />
-      <p v-if="avisoIzipay" role="status" class="mb-4 text-sm text-muted">{{ avisoIzipay }}</p>
 
       <div class="rounded-lg border border-line bg-background p-5" :class="pago.estado === 'anulado' && 'opacity-60'">
         <div class="flex flex-wrap items-center gap-2">
@@ -177,12 +153,6 @@ async function confirmarAnulacion(): Promise<void> {
             Registrar abono
           </button>
           <button
-            v-if="puedeEscribir && pago.tipo === 'ingreso' && pago.pacienteId"
-            type="button"
-            class="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-dark"
-            @click="modalIzipay = true; avisoIzipay = ''"
-          >Cobrar en línea</button>
-          <button
             v-if="puedeAnular"
             type="button"
             class="rounded-md border border-line px-3 py-1.5 text-sm text-error hover:bg-error/10"
@@ -202,8 +172,6 @@ async function confirmarAnulacion(): Promise<void> {
         @actualizado="alAbonar"
         @cerrar="modalAbono = false"
       />
-
-      <IzipayModal v-if="modalIzipay" :pago-id="pago.id" @cerrar="cerrarIzipay" @revisar="revisarIzipay" @exito="alExitoIzipay" />
 
       <ModalConfirmar
         v-if="porAnular"

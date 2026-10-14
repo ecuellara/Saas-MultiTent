@@ -23,6 +23,9 @@ export const CATALOGO_PERMISOS: PermisoCatalogo[] = [
   { codigo: 'payments.read', recurso: 'payments', accion: 'read' },
   { codigo: 'payments.write', recurso: 'payments', accion: 'write' },
   { codigo: 'payments.cancel', recurso: 'payments', accion: 'cancel' },
+  // Pagar el plan de la clínica con pasarela: no es cobrar a pacientes
+  // (`payments.write`) ni leer el arqueo (`payments.read`).
+  { codigo: 'billing.manage', recurso: 'billing', accion: 'manage' },
   // Leer stock y compras es distinto de moverlos: los precios de proveedor y
   // el valorizado son información sensible, así que tiene permiso propio.
   { codigo: 'inventory.read', recurso: 'inventory', accion: 'read' },

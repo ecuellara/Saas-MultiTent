@@ -102,21 +102,6 @@ export async function obtenerPago(id: string): Promise<Pago> {
   return data
 }
 
-export async function prepararIzipay(id: string): Promise<{ formToken: string; publicKey: string }> {
-  const { data } = await api.post<{ formToken: string; publicKey: string }>(`/pagos/${id}/izipay/formtoken`)
-  return data
-}
-
-export async function validarRetornoIzipay(id: string, resultado: KRPaymentResponse): Promise<{ valido: true; orderStatus: string }> {
-  const { data } = await api.post<{ valido: true; orderStatus: string }>(`/pagos/${id}/izipay/validar`, {
-    'kr-answer': resultado.rawClientAnswer,
-    'kr-hash': resultado.hash,
-    'kr-hash-key': resultado.hashKey,
-    'kr-hash-algorithm': resultado.hashAlgorithm,
-  }, { silencioso: true })
-  return data
-}
-
 export async function crearPago(dto: PagoEntrada): Promise<Pago> {
   const { data } = await api.post<Pago>('/pagos', dto)
   return data

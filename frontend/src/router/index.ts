@@ -116,10 +116,16 @@ const router = createRouter({
           meta: { permiso: 'payments.read' },
         },
         {
-          path: 'pagos/:id/resultado',
-          name: 'pago-resultado',
-          component: () => import('../views/pagos/PagoResultadoView.vue'),
-          meta: { permiso: 'payments.read' },
+          path: 'mi-plan',
+          name: 'mi-plan',
+          component: () => import('../views/plan/MiPlanView.vue'),
+          meta: { permiso: 'billing.manage' },
+        },
+        {
+          path: 'mi-plan/resultado',
+          name: 'plan-resultado',
+          component: () => import('../views/plan/PlanResultadoView.vue'),
+          meta: { permiso: 'billing.manage' },
         },
         {
           path: 'inventario',

@@ -618,7 +618,6 @@ model Pago {
   cita           Cita?         @relation(fields: [citaId], references: [id])
   detalles       PagoDetalle[]
   cuotas         Cuota[]
-  intentosIzipay IntentoIzipay[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?
@@ -633,15 +632,15 @@ model IntentoIzipay {
   id String @id @default(uuid())
   orderId String @unique
   tenantId String
-  pagoId String
   usuarioId String
+  cobroSuscripcionId String
   importeCentimos BigInt
   moneda String @default("PEN")
   metadata Json
   createdAt DateTime @default(now())
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  pago Pago @relation(fields: [pagoId], references: [id], onDelete: Cascade)
-  @@index([tenantId, pagoId])
+  cobro CobroSuscripcion @relation(fields: [cobroSuscripcionId], references: [id], onDelete: Cascade)
+  @@index([tenantId, cobroSuscripcionId])
 }
 
 // Global: solo se escribe después de verificar la firma; conserva el texto firmado.
@@ -651,6 +650,7 @@ model EventoIzipay {
   orderId String
   transaccionId String
   tenantId String?
+  cobroSuscripcionId String?
   estadoProveedor String
   importeCentimos BigInt
   moneda String
@@ -658,7 +658,9 @@ model EventoIzipay {
   firmaValida Boolean
   estado String
   createdAt DateTime @default(now())
+  cobro CobroSuscripcion? @relation(fields: [cobroSuscripcionId], references: [id], onDelete: SetNull)
   @@index([orderId])
+  @@index([cobroSuscripcionId])
 }
 
 model PagoDetalle {
@@ -890,6 +892,8 @@ model CobroSuscripcion {
   periodoFin        DateTime
   metadata          Json?
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  intentos          IntentoIzipay[]
+  eventos           EventoIzipay[]
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 

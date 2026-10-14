@@ -21,15 +21,16 @@ vive en el código y en [plan-pruebas-aislamiento.md](plan-pruebas-aislamiento.m
 
 ### 2.1 Decisión
 
-**Se integra únicamente con Izipay**. La etapa 1 está implementada contra un stub
-local; queda la aceptación con credenciales TEST y URL pública del IPN, descrita
-en [izipay-pagos-unicos.md](izipay-pagos-unicos.md). El alcance se hará en tres
+**Se integra únicamente con Izipay**. La etapa 1 (cobro del plan por
+suscripción) está implementada contra un stub local; queda la aceptación con
+credenciales TEST y URL pública del IPN, descrita
+en [izipay-suscripcion.md](izipay-suscripcion.md). El alcance se hará en tres
 etapas, en este orden:
 
 | Etapa | Alcance | Producto y modo |
 |---|---|---|
-| **1** | **Pagos únicos** (cobro puntual al paciente) | Izipay **REST V4.0** (`micuentaweb`) — **formulario incrustado** a partir de un `formToken` |
-| **2** | **Suscripciones** del SaaS (cobro recurrente a la clínica) | **La MISMA documentación** REST V4.0 (`CreatePayment`); cambia la periodicidad y el guardado del token |
+| **1** | **Suscripción** (cobro del plan a la clínica) | Izipay **REST V4.0** (`micuentaweb`) — **formulario incrustado** a partir de un `formToken` |
+| **2** | **Recurrencia** (cobro automático sin intervención) | **La MISMA documentación** REST V4.0 (`CreatePayment`); cambia la periodicidad y el guardado del token |
 | **3** | Migración a la experiencia nueva | Izipay **web-core**, modalidad **embebido** (SDK y esquema de firma distintos) |
 
 **Motivo de aplazarlo:** la facturación del SaaS sigue siendo **manual** por el
@@ -37,8 +38,10 @@ panel de plataforma (ADR-008) y eso es suficiente para las primeras clínicas. N
 hay urgencia de negocio que justifique asumir ahora el coste de una integración
 de pagos (credenciales, conciliación, devoluciones, soporte del gateway).
 
-**Disparador de la etapa 1:** la primera clínica que pida pagar a sus pacientes
-desde el software, o la primera que necesite cobro con tarjeta en mostrador.
+**Disparador de la etapa 1 (cumplido):** decisión de producto — la pasarela es
+SOLO para que la clínica pague su suscripción/plan. `pagos` queda como
+registro INTERNO (cobros a pacientes, abonos, anulación, arqueo), sin pasarela;
+la estructura lo garantiza (`IntentoIzipay` no referencia `Pago`).
 
 **Disparador de la etapa 2:** más clínicas de las que se puedan facturar a mano.
 
@@ -46,34 +49,43 @@ desde el software, o la primera que necesite cobro con tarjeta en mostrador.
 > del proveedor (API de `refund`), distinta de `CreatePayment`. Cuando se pidan,
 > tratar como una entrada nueva, no como una extensión de la etapa 1.
 
-### 2.1.1 Flujo de pago único (REST V4, formulario incrustado)
+### 2.1.1 Flujo implementado: cobro del plan (REST V4, formulario incrustado)
+
+> El diseño anterior de pago único **al paciente** quedó retirado del código
+> por decisión de producto (ver [izipay-suscripcion.md](izipay-suscripcion.md)).
+> Se conserva aquí su flujo como referencia histórica; los endpoints
+> `/pagos/:id/izipay/*` ya no existen.
 
 ```text
-1. Frontend  →  POST <api>/payments/form-token      { orderId, amount, currency, customer }
-2. Backend   →  POST https://api.micuentaweb.pe/api-payment/V4/Charge/CreatePayment
-                Authorization: Basic BASE64(USERNAME:PASSWORD)
-                ← { status: "SUCCESS", answer: { formToken } }
-3. Frontend  ←  { formToken, publicKey }             (nada más: ni usuario ni clave)
+1. Frontend  →  POST <api>/facturacion/mi-plan/formtoken   (sin cuerpo)
+2. Backend   →  cobro PENDIENTE del tenant (o checkout idempotente del periodo)
+              POST https://api.micuentaweb.pe/api-payment/V4/Charge/CreatePayment
+              Authorization: Basic BASE64(SHOP_ID:CLAVE)
+              ← { status: "SUCCESS", answer: { formToken } }
+3. Frontend  ←  { formToken, publicKey, cobroId }  (nada más: ni usuario ni clave)
 4. Frontend  →  KRGlue.loadLibrary('https://static.micuentaweb.pe', publicKey)
-                KR.setFormConfig({ formToken, 'kr-language': 'es-ES' })
-                KR.attachForm('#micuentawebstd_rest_wrapper') → KR.showForm(result.formId)
+              KR.setFormConfig({ formToken, 'kr-language': 'es-ES' })
+              KR.renderElements('#izipay-container') → KR.showForm(result.formId)
 5. Usuario paga en el formulario incrustado en nuestro <div>
-6. Frontend  →  KR.onSubmit → POST <api>/payments/validate
-                { 'kr-answer': paymentData.rawClientAnswer, 'kr-hash': paymentData.hash }
-7. Backend   →  valida firma → analiza estado → compara con la orden interna → responde
-8. Izipay    →  IPN servidor-a-servidor a POST <api>/payments/ipn   ← FUENTE DE VERDAD
+6. Frontend  →  KR.onSubmit → POST <api>/facturacion/mi-plan/validar-retorno
+              { 'kr-answer', 'kr-hash', 'kr-hash-key', 'kr-hash-algorithm' }
+7. Backend   →  valida firma → compara con el intento (importe, moneda, tenant)
+              → responde { valido, orderStatus } SIN acreditar nada
+8. Izipay    →  IPN servidor-a-servidor a POST <api>/webhooks/izipay
+              → BillingService.procesar (cobro pagado + periodo extendido)
+              ← FUENTE DE VERDAD
 ```
 
 Datos concretos que hay que respetar:
 
-- **El importe viaja en unidades mínimas**: `S/ 59.90 → 5990` (`amount * 100`).
-- Cuerpo de `CreatePayment`: `amount`, `currency` (`PEN`), `orderId`, y
-  `customer.email` + `customer.billingDetails` (`firstName`, `lastName`,
-  `phoneNumber`, `identityType`, `identityCode`, `address`, `country`, `city`,
-  `state`, `zipCode`).
+- **El importe viaja en unidades mínimas**: `S/ 249.00 → 24900` (`amount * 100`,
+  con `Prisma.Decimal`, sin coma flotante).
+- Cuerpo de `CreatePayment`: `amount`, `currency` (`PEN`), `orderId`,
+  `metadata` (con `cobroSuscripcionId`) y `customer` con los datos de la
+  clínica (`TenantConfig`: nombre, email, teléfono).
 - El HTML necesita un contenedor propio:
-  `<div id="micuentawebstd_rest_wrapper"><div class="kr-embedded"></div></div>`,
-  más los recursos CSS/JS del cliente Krypton.
+  `<div id="micuentawebstd_rest_wrapper"><div id="izipay-container"><div class="kr-smart-form" kr-card-form-expanded></div></div></div>`,
+  más los recursos CSS/JS del cliente Krypton (tema Neon).
 - La librería del formulario es `@lyracom/embedded-form-glue`.
 
 Reglas que no se deben reinterpretar:
@@ -86,8 +98,11 @@ Reglas que no se deben reinterpretar:
   el pedido en `PAID` es exactamente lo que hay que evitar: la confirmación pasa
   por validación de firma + importe + orden + **IPN**.
 - **La IPN es la fuente de verdad** y se procesa de forma **idempotente**.
-- El endpoint `POST /api/payments/ipn` debe estar **fuera** de la autenticación
+- El endpoint `POST /api/webhooks/izipay` debe estar **fuera** de la autenticación
   normal (es servidor a servidor) y validar la firma antes de tocar nada.
+- **La pasarela nunca toca `pagos`.** El módulo de clínica (cobros a pacientes,
+  abonos, anulación, arqueo) no importa nada de Izipay; la tabla de intentos
+  referencia `CobroSuscripcion`, nunca `Pago`.
 
 ### 2.1.2 Flujo de suscripciones: mismo producto, operaciones adicionales
 
@@ -181,10 +196,10 @@ La especificación propone seis tablas. Así encajan (y qué falta) en el modelo
 | `plans` | `Plan` + `PlanFeature` | ✅ Existe y se reutiliza tal cual |
 | `subscriptions` | `Subscription` | ⚠️ Existe pero **le faltan** `providerSubscriptionId`, `paymentMethodId`, `effectDate`, `rrule`, `nextPaymentAt` |
 | `payments` | `CobroSuscripcion` | ⚠️ Existe con `claveIdempotencia` y `referenciaExterna`; **falta** separar `providerStatus` de `internalStatus` y el `orderId` |
-| `payment_events` | `WebhookEvent` | ⚠️ Existe con `eventId` único y `payload`; **falta `signature_valid`** (hoy no se persiste si la firma era válida) |
+| `payment_events` | `WebhookEvent` + `EventoIzipay` | ✅ `eventId` único con duplicados detectados; `EventoIzipay` conserva el `rawAnswer` firmado con `firmaValida` y su `estado` (`procesado`, `sin_cobro`, `importe_moneda_incorrectos`, `orden_desconocida`) |
 | `payment_methods` | — | ❌ **No existe.** Es imprescindible para la etapa 2 (tokenización): lo que se guarda es el token, nunca el PAN ni el CVV |
-| `customers` | `Tenant` (para el SaaS) y `Paciente` (para el cobro al paciente) | ✅ No hace falta tabla nueva: la relación ya está |
-| `orders` | — | ❌ **No existe.** Hace falta algo que correlacione `orderId` ↔ formToken ↔ pago, porque el `Pago` del módulo de clínica es el registro contable, no el intento de pago |
+| `customers` | `Tenant` (para el SaaS) | ✅ No hace falta tabla nueva: el comprador sale de `TenantConfig` |
+| `orders` | `IntentoIzipay` → `CobroSuscripcion` | ✅ Correlaciona `orderId` ↔ intento ↔ cobro. Por decisión de producto NO referencia `Pago`: un intento abandonado o rechazado nunca ensucia el arqueo de clínica |
 
 **Consecuencias de diseño que esto implica:**
 
@@ -204,30 +219,32 @@ La especificación propone seis tablas. Así encajan (y qué falta) en el modelo
    columna no se puede distinguir un evento verificado de uno que llegó con firma
    inválida (que hoy simplemente se rechaza con 401 y no se registra).
 
-### 2.3 Etapa 1 — Pagos únicos
+### 2.3 Etapa 1 — Cobro del plan (implementada)
 
-**Objetivo:** cobrar un importe puntual (por ejemplo el saldo de un tratamiento)
-con tarjeta, y que quede reflejado en el módulo de Pagos.
+**Objetivo cumplido:** cobrar el periodo de la suscripción con tarjeta
+mediante formulario incrustado, conciliado por IPN contra `CobroSuscripcion`.
 
-Puntos de diseño a decidir al implementar:
+Lo construido (ver [izipay-suscripcion.md](izipay-suscripcion.md)):
 
-1. **Dónde encaja en el dominio.** El pago puntual corresponde a un `Pago` de
-   `tipo = 'ingreso'` con un `pacienteId`. Hay que decidir si se guarda el
-   identificador de la transacción del gateway en `Pago.referenciaId` /
-   `referenciaTipo = 'izipay'` (hoy `referenciaTipo` se usa para vincular el
-   egreso de una compra) o si se crea una tabla de intentos de pago. **Recomendado:
-   tabla propia de intentos**, porque un intento puede fallar o quedar abandonado
-   sin que exista un `Pago` todavía.
-2. **Quién genera el `orderNumber`.** Debe ser nuestro (correlativo por tenant,
-   reutilizando `SecuenciasService`) y viajar en la petición, para poder conciliar
-   el IPN contra algo que controlamos.
-3. **El importe nunca se confía al retorno del navegador.** La confirmación válida
-   es el **IPN** (ver 2.7); el retorno del navegador solo se usa para la pantalla de
-   resultado, y siempre después de que el backend valide `kr-hash`.
-4. **El `formToken` exige una llamada servidor a servidor.** Lo genera el backend
-   con las credenciales del comercio; **no puede generarse en el navegador**. Es el
-   punto que más se subestima, y condiciona el diseño: el frontend necesita dos
-   endpoints propios (`/formtoken` y `/validate`) desde el primer día.
+1. **Motor en `core/pasarela/`** que no sabe qué cobra (`crearFormToken`,
+   `verificarFirma` sobre el `kr-answer` crudo, céntimos con `Decimal`,
+   configuración con las 5 variables).
+2. **`IntentoIzipay` apunta al cobro**, con `orderId` único, importe en
+   céntimos y metadata de conciliación. Sin relación con `Pago`.
+3. **`POST /api/facturacion/mi-plan/formtoken`** (`billing.manage`): usa el
+   cobro pendiente o genera el del periodo; el importe sale del servidor.
+4. **IPN por `BillingService.procesar`** en una sola transacción con el evento:
+   cobro pagado + periodo extendido, una sola vez aunque el aviso se repita.
+5. **Pantalla «Mi plan»** (`/mi-plan`): plan, periodo, cobro pendiente,
+   «Pagar el plan» y página de resultado que solo consulta el estado.
+
+Puntos que antes estaban por decidir y ya están cerrados:
+
+1. ~~Dónde encaja en el dominio~~ → En `CobroSuscripcion`, nunca en `Pago`.
+2. ~~Quién genera el `orderId`~~ → El backend (UUID por intento), guardado para
+   casar el IPN.
+3. **El importe nunca se confía al retorno del navegador** (sigue vigente).
+4. **El `formToken` exige llamada servidor a servidor** (sigue vigente).
 
 ### 2.4 Etapa 2 — Suscripciones (la MISMA documentación)
 
