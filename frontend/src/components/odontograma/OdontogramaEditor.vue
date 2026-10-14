@@ -325,7 +325,7 @@ async function confirmarFirmar(): Promise<void> {
                   :key="n"
                   type="button"
                   :title="nombrePieza(n)"
-                  class="w-[64px] shrink-0 rounded-lg border transition sm:w-[78px]"
+                  class="w-[76px] shrink-0 rounded-lg border transition sm:w-[92px]"
                   :class="dienteObjetivo === n ? 'border-primary ring-2 ring-secondary/50' : 'border-transparent hover:border-secondary'"
                   @click="elegirDiente(n)"
                 >
@@ -345,7 +345,7 @@ async function confirmarFirmar(): Promise<void> {
                   :key="n"
                   type="button"
                   :title="nombrePieza(n)"
-                  class="w-[64px] shrink-0 rounded-lg border transition sm:w-[78px]"
+                  class="w-[76px] shrink-0 rounded-lg border transition sm:w-[92px]"
                   :class="dienteObjetivo === n ? 'border-primary ring-2 ring-secondary/50' : 'border-transparent hover:border-secondary'"
                   @click="elegirDiente(n)"
                 >

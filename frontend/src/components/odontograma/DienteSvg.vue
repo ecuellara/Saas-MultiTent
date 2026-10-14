@@ -13,8 +13,10 @@ import { toothMeta } from './teeth'
  *  - la cara palatina es `P` en la arcada superior y lingual `L` en la inferior;
  *  - mesial/distal se etiquetan según el cuadrante (`toothMeta`).
  *
- * Lo ya registrado (`pintados`, hallazgos ACTIVOS) se pinta con el color del
- * catálogo; los anulados NO llegan aquí.
+ * La corona (única zona seleccionable) ocupa la mayor parte del dibujo: las
+ * raíces son cortas porque no reciben selección y el número FDI va compacto
+ * abajo. Lo ya registrado (`pintados`, hallazgos ACTIVOS) se pinta con el
+ * color del catálogo; los anulados NO llegan aquí.
  */
 export interface PintadoDiente {
   superficies: string[]
@@ -129,7 +131,7 @@ function pulsarZona(code: string): void {
 <template>
   <div class="flex w-full flex-col items-center gap-0.5">
     <svg
-      viewBox="0 0 100 152"
+      viewBox="0 0 100 114"
       class="h-auto w-full rounded-md border"
       :class="[
         seleccionado && !soloLectura ? 'border-primary ring-2 ring-primary' : 'border-line',
@@ -149,26 +151,26 @@ function pulsarZona(code: string): void {
       <!-- tinte de hallazgo de pieza completa -->
       <path v-if="piezaColor" :d="crownPath" :fill="piezaColor" opacity="0.18" />
 
-      <!-- raíces -->
+      <!-- raíces cortas (no seleccionables, solo referencia anatómica) -->
       <template v-if="isMolar">
-        <path d="M34 72 L30 122 Q38 129 44 122 L46 74 Z" fill="#ffffff" stroke="#172b3a" stroke-width="1.5" />
-        <path d="M66 72 L70 122 Q62 129 56 122 L54 74 Z" fill="#ffffff" stroke="#172b3a" stroke-width="1.5" />
-        <line x1="38" y1="80" x2="36" y2="118" stroke="#94a3b8" stroke-width="1" />
-        <line x1="62" y1="80" x2="64" y2="118" stroke="#94a3b8" stroke-width="1" />
+        <path d="M34 72 L30 94 Q38 100 44 94 L46 74 Z" fill="#ffffff" stroke="#172b3a" stroke-width="1.5" />
+        <path d="M66 72 L70 94 Q62 100 56 94 L54 74 Z" fill="#ffffff" stroke="#172b3a" stroke-width="1.5" />
+        <line x1="38" y1="78" x2="36" y2="92" stroke="#94a3b8" stroke-width="1" />
+        <line x1="62" y1="78" x2="64" y2="92" stroke="#94a3b8" stroke-width="1" />
       </template>
       <template v-else>
-        <path :d="`M42 72 L38 ${rootLong ? 130 : 124} Q50 ${rootLong ? 138 : 132} 62 ${rootLong ? 130 : 124} L58 72 Z`" fill="#ffffff" stroke="#172b3a" stroke-width="1.5" />
-        <line x1="50" y1="78" :x2="50" :y2="rootLong ? 126 : 120" stroke="#94a3b8" stroke-width="1" />
+        <path :d="`M42 72 L38 ${rootLong ? 98 : 96} Q50 ${rootLong ? 104 : 102} 62 ${rootLong ? 98 : 96} L58 72 Z`" fill="#ffffff" stroke="#172b3a" stroke-width="1.5" />
+        <line x1="50" y1="78" :x2="50" :y2="rootLong ? 94 : 92" stroke="#94a3b8" stroke-width="1" />
       </template>
 
       <!-- símbolos de hallazgos de pieza completa -->
       <g v-if="codigos.includes('AUSENTE')" stroke="#64748b" stroke-width="2.5">
-        <line x1="18" y1="14" x2="82" y2="138" />
-        <line x1="82" y1="14" x2="18" y2="138" />
+        <line x1="18" y1="14" x2="82" y2="100" />
+        <line x1="82" y1="14" x2="18" y2="100" />
       </g>
       <g v-if="codigos.includes('EXTRACCION_INDICADA')" :stroke="ROJO" stroke-width="2.5">
-        <line x1="18" y1="14" x2="82" y2="138" />
-        <line x1="82" y1="14" x2="18" y2="138" />
+        <line x1="18" y1="14" x2="82" y2="100" />
+        <line x1="82" y1="14" x2="18" y2="100" />
       </g>
       <rect
         v-if="codigos.includes('CORONA')"
@@ -177,11 +179,11 @@ function pulsarZona(code: string): void {
       />
       <line
         v-if="codigos.includes('ENDODONCIA')"
-        x1="50" y1="30" x2="50" y2="126" stroke="#0756a3" stroke-width="3"
+        x1="50" y1="30" x2="50" y2="96" stroke="#0756a3" stroke-width="3"
       />
       <rect
         v-if="codigos.includes('IMPLANTE')"
-        x="45" y="76" width="10" height="52" fill="#94a3b8" stroke="#475569" stroke-width="1"
+        x="45" y="76" width="10" height="22" fill="#94a3b8" stroke="#475569" stroke-width="1"
       />
 
       <!-- zonas de superficie clicables -->
@@ -198,13 +200,13 @@ function pulsarZona(code: string): void {
         >
           <title>{{ z.code }} (pieza {{ numero }})</title>
         </polygon>
-        <text :x="z.etiqueta.x" :y="z.etiqueta.y" text-anchor="middle" font-size="9" fill="#64748b" pointer-events="none">
+        <text :x="z.etiqueta.x" :y="z.etiqueta.y" text-anchor="middle" font-size="10" fill="#64748b" pointer-events="none">
           {{ z.code }}
         </text>
       </g>
 
       <!-- número FDI -->
-      <text x="50" y="147" text-anchor="middle" font-size="13" font-weight="600" fill="#334155" pointer-events="none">{{ numero }}</text>
+      <text x="50" y="108" text-anchor="middle" font-size="13" font-weight="600" fill="#334155" pointer-events="none">{{ numero }}</text>
     </svg>
   </div>
 </template>
