@@ -1,4 +1,5 @@
-import axios, { type AxiosError } from 'axios'
+import axios from 'axios'
+import { instalarRefresh } from './refresh-session'
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -13,8 +14,8 @@ declare module 'axios' {
 
 const api = axios.create({
   // En desarrollo se deja relativo para que Vite proxye `/api` al backend y el
-  // navegador vea un mismo origen (evita CORS y problemas con la cookie del
-  // refresh). En producción `VITE_API_URL` es absoluta.
+  // navegador vea un mismo origen. En Vercel /api también es relativa y se
+  // reescribe hacia Render para conservar la cookie SameSite=Strict.
   baseURL: import.meta.env.VITE_API_URL || '/api',
   timeout: 15000,
   // El refresh viaja en cookie httpOnly (`path=/api/auth`).
@@ -33,19 +34,18 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-api.interceptors.response.use(
-  (res) => res,
-  (err: AxiosError) => {
-    const status = err.response?.status
-    if (status === 401 && err.config?.silencioso !== true) {
-      // Token caducado o revocado. Se limpia el almacenamiento y se AVISA por
-      // evento; la navegación la decide la app (sin recarga dura).
-      localStorage.removeItem('token')
-      localStorage.removeItem('tenantId')
-      window.dispatchEvent(new Event('sesion:expirada'))
-    }
-    return Promise.reject(err)
+instalarRefresh(api, {
+  ruta: '/auth/refresh',
+  leerToken: () => localStorage.getItem('token') ?? '',
+  guardarToken: (token) => {
+    localStorage.setItem('token', token)
+    window.dispatchEvent(new CustomEvent('sesion:renovada', { detail: token }))
   },
-)
+  expirar: () => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('tenantId')
+    window.dispatchEvent(new Event('sesion:expirada'))
+  },
+})
 
 export default api

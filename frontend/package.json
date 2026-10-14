@@ -3,8 +3,12 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": { "node": "22.x" },
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/vercel-config.mjs verificar",
+    "configurar:vercel": "node scripts/vercel-config.mjs configurar",
+    "test:deploy": "node --experimental-strip-types --test test/despliegue.test.mjs test/refresh.test.mjs",
     "build": "vue-tsc -b && vite build",
     "typecheck": "vue-tsc -b --force",
     "test:izipay": "node --experimental-strip-types --test test/izipay-glue.test.mjs test/izipay-form.test.mjs",

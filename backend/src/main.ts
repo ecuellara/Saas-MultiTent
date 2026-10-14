@@ -16,7 +16,6 @@ import { AppModule } from './app.module.js';
 import { GlobalExceptionFilter } from './core/filters/global-exception.filter.js';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
   // `trust proxy`: cuántos saltos de proxy hay delante de la API.
   // `TRUST_PROXY` (entero >= 0, por defecto 2 = Cloudflare → Nginx → API,
   // doc §5 y §8.2). Con un valor MAYOR que los saltos reales, `req.ip` sería
@@ -25,10 +24,14 @@ async function bootstrap(): Promise<void> {
   // Valores: 2 con CDN+proxy, 1 detrás de un solo nginx (compose staging),
   // 0 si la API queda expuesta directamente. Si falta o no es válido, el
   // arranque FALLA: un valor silenciosamente erróneo es peor que no arrancar.
+  if (process.env.NODE_ENV === 'production' && !process.env.TRUST_PROXY?.trim()) {
+    throw new Error('TRUST_PROXY es obligatorio en producción; configure el número real de proxies');
+  }
   const saltos = Number(process.env.TRUST_PROXY ?? 2);
   if (!Number.isInteger(saltos) || saltos < 0) {
     throw new Error('TRUST_PROXY debe ser un entero >= 0 (0 directo, 1 un proxy, 2 CDN+proxy)');
   }
+  const app = await NestFactory.create(AppModule);
   (app.getHttpAdapter().getInstance() as { set?: (k: string, v: unknown) => void }).set?.(
     'trust proxy',
     saltos,
@@ -68,4 +71,7 @@ async function bootstrap(): Promise<void> {
 }
 
 // eslint-disable-next-line no-console
-bootstrap().catch((e) => console.error(e));
+bootstrap().catch((e) => {
+  console.error(e);
+  process.exitCode = 1;
+});

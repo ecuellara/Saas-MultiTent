@@ -1,4 +1,5 @@
-import axios, { type AxiosError } from 'axios'
+import axios from 'axios'
+import { instalarRefresh } from './refresh-session'
 
 /**
  * Cliente del PANEL DE PLATAFORMA. Instancia separada de `api.ts` a propósito:
@@ -21,17 +22,18 @@ plataforma.interceptors.request.use((config) => {
   return config
 })
 
-plataforma.interceptors.response.use(
-  (res) => res,
-  (err: AxiosError) => {
-    const status = err.response?.status
-    if (status === 401 && err.config?.silencioso !== true) {
-      localStorage.removeItem(TOKEN_KEY)
-      window.dispatchEvent(new Event('plataforma:expirada'))
-    }
-    return Promise.reject(err)
+instalarRefresh(plataforma, {
+  ruta: '/platform/auth/refresh',
+  leerToken: () => leerTokenPlataforma(),
+  guardarToken: (token) => {
+    guardarTokenPlataforma(token)
+    window.dispatchEvent(new CustomEvent('plataforma:renovada', { detail: token }))
   },
-)
+  expirar: () => {
+    quitarTokenPlataforma()
+    window.dispatchEvent(new Event('plataforma:expirada'))
+  },
+})
 
 export function leerTokenPlataforma(): string {
   return localStorage.getItem(TOKEN_KEY) ?? ''

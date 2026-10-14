@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": { "node": "22.x" },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
@@ -11,6 +12,9 @@
     "db:format": "prisma format",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
+    "deploy:migrate": "node scripts/operacion-produccion.mjs migrate",
+    "deploy:seed": "node scripts/operacion-produccion.mjs seed",
+    "test:deploy": "node --test scripts/test/despliegue.test.mjs",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed-demo": "tsx prisma/seed-demo.ts",
     "db:migrar-clinica": "tsx scripts/migrar-clinica.ts",

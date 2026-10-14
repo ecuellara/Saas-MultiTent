@@ -3,6 +3,7 @@
 
 # Dependencias y build (cinturón y tirantes)
 **/node_modules/
+**/.vercel/
 **/dist/
 **/build/
 **/*.tsbuildinfo

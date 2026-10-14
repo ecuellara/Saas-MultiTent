@@ -34,13 +34,20 @@ function alExpirarPlataforma(): void {
   }
 }
 
+function alRenovar(e: Event): void { sesion.token = (e as CustomEvent<string>).detail }
+function alRenovarPlataforma(e: Event): void { plataforma.token = (e as CustomEvent<string>).detail }
+
 onMounted(() => {
   window.addEventListener('sesion:expirada', alExpirar)
   window.addEventListener('plataforma:expirada', alExpirarPlataforma)
+  window.addEventListener('sesion:renovada', alRenovar)
+  window.addEventListener('plataforma:renovada', alRenovarPlataforma)
 })
 onUnmounted(() => {
   window.removeEventListener('sesion:expirada', alExpirar)
   window.removeEventListener('plataforma:expirada', alExpirarPlataforma)
+  window.removeEventListener('sesion:renovada', alRenovar)
+  window.removeEventListener('plataforma:renovada', alRenovarPlataforma)
 })
 </script>
 

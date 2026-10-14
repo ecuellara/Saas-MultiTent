@@ -1,5 +1,8 @@
 # Despliegue: staging, ensayo de migración y rollback
 
+> Para Render + Vercel + Supabase, usar [render-vercel-supabase.md](render-vercel-supabase.md).
+> Este documento mantiene el procedimiento Docker/systemd de staging.
+
 Este documento es el procedimiento ejecutable de la Fase 9 (staging, rollback
 documentado, alertas) y el campo de ensayo de migraciones con datos (futura
 Fase 4 si una clínica trae datos; la actual no tiene). Todo lo que dice

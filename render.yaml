@@ -1,0 +1,50 @@
+# API Node + disco persistente. Configurar secretos en Render, no en este archivo.
+# Build conserva devDependencies para prisma CLI, tsx y dotenv.
+services:
+  - type: web
+    name: dental-saas-api
+    runtime: node
+    rootDir: backend
+    plan: 0.5c-512mb
+    numInstances: 1
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
+    preDeployCommand: npm run deploy:migrate
+    startCommand: node dist/main.js
+    healthCheckPath: /api/health
+    disk:
+      name: archivos-clinicos
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.20.0
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: TRUST_PROXY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
+      - key: BACKUP_DIR
+        value: /var/data/backups
+      - key: PLATFORM_OWNER_EMAIL
+        sync: false
+      - key: PLATFORM_OWNER_PASSWORD
+        sync: false
+      - key: IZIPAY_BASE_URL
+        sync: false
+      - key: IZIPAY_SHOP_ID
+        sync: false
+      - key: IZIPAY_CLAVE
+        sync: false
+      - key: IZIPAY_CLAVE_HMAC
+        sync: false
+      - key: IZIPAY_PUBLIC_KEY
+        sync: false
