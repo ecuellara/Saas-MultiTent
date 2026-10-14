@@ -77,6 +77,8 @@ const CLAVES_SENSIBLES_EXACTAS = new Set([
   'storageKey',
   'datosSnapshot',
   'cuerpoSnapshot',
+  'kr-answer',
+  'kr-hash',
 ]);
 
 /** Trozos que, si aparecen en el nombre de un campo, implican redacción. */
@@ -196,6 +198,9 @@ export class AuditInterceptor implements NestInterceptor {
       return next.handle();
     }
     const ruta: string = req.originalUrl ?? req.url ?? '';
+    // Izipay persiste su evento verificado y el abono en la misma transacción.
+    // Una firma inválida no debe producir ninguna escritura ni volcar kr-answer.
+    if (/^\/api\/webhooks\/izipay\/?$/i.test(ruta.split('?')[0])) return next.handle();
     if (!this.esCritica(ruta)) return next.handle();
 
     // Instantánea redactada del cuerpo ANTES de ejecutar el handler. El

@@ -1,13 +1,14 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import { fileURLToPath } from 'node:url';
 
-// Carga `.env` si existe, sin añadir dependencia (Node ≥ 20.12 trae
-// `process.loadEnvFile`). En producción las variables vienen del entorno y esta
-// llamada no hace nada. Se accede por cast para no depender de los tipos de Node.
+// Resolver respecto a src/main.ts o dist/main.js, no al directorio desde el
+// que se lanzó Node. Las variables del proceso conservan prioridad sobre .env.
 try {
-  (process as unknown as { loadEnvFile?: () => void }).loadEnvFile?.();
-} catch {
-  // No hay `.env`: se usan las variables del entorno tal cual.
+  process.loadEnvFile(fileURLToPath(new URL('../.env', import.meta.url)));
+} catch (e) {
+  // Solo un archivo ausente es opcional; otros errores no deben ocultarse.
+  if (!(e instanceof Error && 'code' in e && e.code === 'ENOENT')) throw e;
 }
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';

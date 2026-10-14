@@ -18,6 +18,8 @@ import { RequirePermission } from '../../core/guards/require-permission.decorato
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 import { EventoNormalizado, verificarHmac, verificarMercadoPago } from './verificadores.js';
+import { PagosModule } from '../pagos/pagos.module.js';
+import { IzipayService } from '../pagos/izipay.service.js';
 
 export class CheckoutDto {
   @ApiProperty()
@@ -231,7 +233,7 @@ function secretoDe(proveedor: string): string | null {
 @ApiTags('webhooks')
 @Controller('webhooks')
 export class WebhooksController {
-  constructor(private readonly billing: BillingService) {}
+  constructor(private readonly billing: BillingService, private readonly izipay: IzipayService) {}
 
   @Public()
   @Post(':proveedor')
@@ -241,6 +243,7 @@ export class WebhooksController {
     @Body() body: Record<string, unknown>,
     @Req() req: Request,
   ): Promise<{ ok: boolean; duplicado?: boolean }> {
+    if (proveedor === 'izipay') return this.izipay.ipn(body);
     if (!['hmac', 'mercadopago'].includes(proveedor)) {
       throw new NotFoundException('Proveedor no soportado');
     }
@@ -312,6 +315,7 @@ export class FacturacionController {
 }
 
 @Module({
+  imports: [PagosModule],
   controllers: [WebhooksController, PlatformBillingController, FacturacionController],
   providers: [BillingService],
 })

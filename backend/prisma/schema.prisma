@@ -146,6 +146,7 @@ model Tenant {
   consentimientos          ConsentimientoFirmado[]
   googleAccounts           GoogleAccount[]
   pagos                    Pago[]
+  intentosIzipay            IntentoIzipay[]
   pagoDetalles             PagoDetalle[]
   cuotas                   Cuota[]
   proveedores              Proveedor[]
@@ -617,6 +618,7 @@ model Pago {
   cita           Cita?         @relation(fields: [citaId], references: [id])
   detalles       PagoDetalle[]
   cuotas         Cuota[]
+  intentosIzipay IntentoIzipay[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?
@@ -625,6 +627,38 @@ model Pago {
   @@unique([tenantId, referenciaTipo, referenciaId])
   @@index([tenantId, tipo, fecha])
   @@index([tenantId, pacienteId, estado])
+}
+
+model IntentoIzipay {
+  id String @id @default(uuid())
+  orderId String @unique
+  tenantId String
+  pagoId String
+  usuarioId String
+  importeCentimos BigInt
+  moneda String @default("PEN")
+  metadata Json
+  createdAt DateTime @default(now())
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pago Pago @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+  @@index([tenantId, pagoId])
+}
+
+// Global: solo se escribe después de verificar la firma; conserva el texto firmado.
+model EventoIzipay {
+  id String @id @default(uuid())
+  claveIdempotencia String @unique
+  orderId String
+  transaccionId String
+  tenantId String?
+  estadoProveedor String
+  importeCentimos BigInt
+  moneda String
+  rawAnswer String
+  firmaValida Boolean
+  estado String
+  createdAt DateTime @default(now())
+  @@index([orderId])
 }
 
 model PagoDetalle {

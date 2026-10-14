@@ -25,6 +25,7 @@ export const TENANT_MODELS = new Set([
   'ConsentimientoFirmado',
   'GoogleAccount',
   'Pago',
+  'IntentoIzipay',
   'PagoDetalle',
   'Cuota',
   'Proveedor',

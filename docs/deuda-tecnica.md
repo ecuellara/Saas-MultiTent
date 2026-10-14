@@ -21,7 +21,9 @@ vive en el código y en [plan-pruebas-aislamiento.md](plan-pruebas-aislamiento.m
 
 ### 2.1 Decisión
 
-**Se integra únicamente con Izipay**, y **no ahora**. El alcance se hará en tres
+**Se integra únicamente con Izipay**. La etapa 1 está implementada contra un stub
+local; queda la aceptación con credenciales TEST y URL pública del IPN, descrita
+en [izipay-pagos-unicos.md](izipay-pagos-unicos.md). El alcance se hará en tres
 etapas, en este orden:
 
 | Etapa | Alcance | Producto y modo |

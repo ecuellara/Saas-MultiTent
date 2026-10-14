@@ -8,6 +8,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { SecuenciasService } from '../../core/secuencias/secuencias.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 import type { AbonoDto, CreatePagoDto } from './pagos.dto.js';
+import type { Prisma } from '@prisma/client';
 
 type PagoRow = Record<string, unknown> & {
   id: string;
@@ -58,9 +59,9 @@ export class PagosService {
     });
   }
 
-  async obtener(id: string): Promise<PagoRow> {
+  async obtener(id: string, db: Db | Prisma.TransactionClient = this.db): Promise<PagoRow> {
     const ctx = requireTenant();
-    const p = await this.db.pago.findUnique({ where: { id } });
+    const p = await (db as unknown as Db).pago.findUnique({ where: { id } });
     if (!p || p.tenantId !== ctx.tenantId) throw new NotFoundException('Pago no encontrado');
     return p;
   }
@@ -152,8 +153,8 @@ export class PagosService {
   }
 
   /** Registra un abono: método/fecha por abono, tope y recálculo de saldo/estado. */
-  async abonar(id: string, dto: AbonoDto): Promise<PagoRow> {
-    const pago = await this.obtener(id);
+  async abonar(id: string, dto: AbonoDto, db: Db | Prisma.TransactionClient = this.db): Promise<PagoRow> {
+    const pago = await this.obtener(id, db);
     if (pago.estado === 'anulado') throw new BadRequestException('Pago anulado');
     const total = num(pago.montoTotal);
     const pagado = num(pago.montoPagado);
@@ -164,7 +165,7 @@ export class PagosService {
     const saldo = Math.round((total - nuevoPagado) * 100) / 100;
     // Escritura condicionada al valor leído: si otro abono concurrente ya cambió
     // `montoPagado`, `count === 0` y se rechaza en vez de perder el abono.
-    const r = await this.db.pago.updateMany({
+    const r = await (db as unknown as Db).pago.updateMany({
       where: { id, montoPagado: pagado, estado: { not: 'anulado' } },
       data: {
         montoPagado: nuevoPagado,
@@ -176,7 +177,7 @@ export class PagosService {
     if (r.count !== 1) {
       throw new ConflictException('El pago cambió mientras se registraba el abono; reintente');
     }
-    return this.obtener(id);
+    return this.obtener(id, db);
   }
 
   /** Anulación condicional: solo pendiente/parcial con saldo pendiente. */
