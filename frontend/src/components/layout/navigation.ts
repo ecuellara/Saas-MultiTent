@@ -8,6 +8,7 @@ import {
   Cog6ToothIcon,
   HomeIcon,
   ShoppingCartIcon,
+  TagIcon,
   TruckIcon,
   UserGroupIcon,
   UsersIcon,
@@ -36,6 +37,7 @@ export const NAVEGACION: ItemNavegacion[] = [
   { etiqueta: 'Panel', ruta: '/', icono: HomeIcon, seccion: 'Principal' },
   { etiqueta: 'Pacientes', ruta: '/pacientes', icono: UsersIcon, permiso: 'patients.read', seccion: 'Principal' },
   { etiqueta: 'Agenda', ruta: '/agenda', icono: CalendarDaysIcon, permiso: 'appointments.read', seccion: 'Principal' },
+  { etiqueta: 'Tratamientos', ruta: '/tratamientos', icono: TagIcon, permiso: 'patients.read', seccion: 'Principal' },
   { etiqueta: 'Odontograma', ruta: '/odontograma', icono: BeakerIcon, permiso: 'patients.read', seccion: 'Principal' },
   {
     etiqueta: 'Consentimientos',

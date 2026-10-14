@@ -80,6 +80,12 @@ const router = createRouter({
           meta: { permiso: 'appointments.read' },
         },
         {
+          path: 'tratamientos',
+          name: 'tratamientos',
+          component: () => import('../views/tratamientos/TratamientosView.vue'),
+          meta: { permiso: 'patients.read' },
+        },
+        {
           path: 'odontograma',
           name: 'odontograma',
           component: () => import('../views/odontograma/OdontogramaView.vue'),
