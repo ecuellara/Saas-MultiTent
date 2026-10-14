@@ -83,12 +83,19 @@ Los recursos `ext/neon-reset.min.css` y `ext/neon.js` se cargan en el `<head>`
 después de Krypton y antes de configurar/montar el formulario. El formToken se
 asigna mediante `KR.setFormConfig`, sin credenciales fijas en HTML ni recursos
 de pago en `index.html`. Al desmontar se eliminan formularios, callbacks,
-scripts y CSS; el singleton de KRGlue se reinicia para permitir la reapertura.
-La limpieza y la apertura siguiente se serializan para evitar carreras.
+scripts y CSS. Se conserva el runtime de KR/KRGlue: eliminar `window.KR` no
+descarga los listeners internos del SDK, y volver a ejecutar Krypton/Neon en
+una SPA puede dejar estado residual. El SDK y el plugin Neon se inicializan
+una sola vez por página; en cada apertura se repone el CSS, se eliminan los
+formularios anteriores y se aplica el **token nuevo antes de renderizar**.
+La limpieza y la apertura siguiente se serializan para evitar carreras. Si se
+cierra durante la descarga inicial, esa carga termina (con timeout) antes de
+permitir otra apertura; no se configura ni muestra el token de la sesión cerrada.
 `izipay-glue.ts` normaliza el export CommonJS de KRGlue antes de usarlo:
 Vite puede entregarlo envuelto en `default`, en lugar de la instancia directa.
 `npm run test:izipay` en frontend prueba el import del paquete real, su
-`loadLibrary` y la reapertura después del reset con DOM simulado y sin red.
+`loadLibrary` y, con DOM simulado y sin red, la reapertura con tokens distintos,
+un desmontaje lento, callbacks antiguos y el cierre durante la carga inicial.
 Cerrar muestra cancelación; `KR.onSubmit` envía exclusivamente el texto firmado,
 hash y selectores a `/pagos/:id/izipay/validar`. Solo después de validarlo se
 muestra rechazo o «pendiente de confirmar»; si falla se indica resultado sin

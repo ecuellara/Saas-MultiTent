@@ -16,6 +16,8 @@ let formulario: FormularioIzipay | undefined
 let aceptado = false
 
 function cerrar(): void {
+  activo = false
+  void formulario?.destruir()
   emit('cerrar', aceptado ? 'Pago pendiente de confirmar. El estado se actualizará cuando llegue la notificación de Izipay.' : resultadoRecibido ? 'Pago rechazado. No se ha confirmado ningún cobro en línea.' : 'Pago cancelado por el usuario. Si ya envió el pago, su confirmación puede llegar después.')
 }
 
