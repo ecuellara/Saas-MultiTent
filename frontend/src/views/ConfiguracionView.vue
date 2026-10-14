@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import AvisoError from '../components/ui/AvisoError.vue'
 import CargandoBloque from '../components/ui/CargandoBloque.vue'
+import FechaInput from '../components/ui/FechaInput.vue'
 import {
   actualizarConfiguracion,
   DIAS_SEMANA,
@@ -14,6 +15,8 @@ import {
 } from '../services/configuracion'
 import { mensajeDeError } from '../services/errores'
 import { useSessionStore } from '../stores/session'
+import { Cog6ToothIcon } from '@heroicons/vue/24/outline'
+import ModuloHero from '../components/ui/ModuloHero.vue'
 
 const sesion = useSessionStore()
 
@@ -147,12 +150,12 @@ async function guardar(): Promise<void> {
   }
 }
 
-const campo = 'w-full rounded-md border border-line bg-background-soft px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60'
+const campo = 'w-full rounded-xl border border-line bg-background-soft/60 px-3 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60'
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl">
-    <h2 class="text-lg font-semibold text-ink">Configuración</h2>
+  <div class="space-y-4">
+    <ModuloHero etiqueta="Sistema" titulo="Configuración de la clínica" descripcion="Define identidad, horario de atención y descansos operativos." :icono="Cog6ToothIcon" :metrica="String(descansos.length)" metrica-etiqueta="Descansos" />
 
     <CargandoBloque v-if="cargando" texto="Cargando configuración…" />
     <AvisoError v-else-if="error && !config" :mensaje="error" />
@@ -169,7 +172,7 @@ const campo = 'w-full rounded-md border border-line bg-background-soft px-2.5 py
       </p>
 
       <fieldset :disabled="!puedeEditar" class="mt-4 space-y-4">
-        <section class="rounded-lg border border-line bg-background p-4">
+         <section class="rounded-[28px] border border-line bg-background p-5 shadow-sm">
           <h3 class="text-sm font-medium text-ink">Datos de la clínica</h3>
           <div class="mt-3 grid gap-3 sm:grid-cols-2">
             <label class="block text-sm">
@@ -203,7 +206,7 @@ const campo = 'w-full rounded-md border border-line bg-background-soft px-2.5 py
           </div>
         </section>
 
-        <section class="rounded-lg border border-line bg-background p-4">
+         <section class="rounded-[28px] border border-line bg-background p-5 shadow-sm">
           <h3 class="text-sm font-medium text-ink">Horario de atención</h3>
           <p class="mt-1 text-xs text-muted">Las horas usan el formato de 24 h que valida la agenda.</p>
           <ul class="mt-3 space-y-2">
@@ -231,7 +234,7 @@ const campo = 'w-full rounded-md border border-line bg-background-soft px-2.5 py
           </ul>
         </section>
 
-        <section class="rounded-lg border border-line bg-background p-4">
+         <section class="rounded-[28px] border border-line bg-background p-5 shadow-sm">
           <h3 class="text-sm font-medium text-ink">Descansos</h3>
           <ul v-if="descansos.length > 0" class="mt-3 space-y-1.5">
             <li
@@ -252,20 +255,8 @@ const campo = 'w-full rounded-md border border-line bg-background-soft px-2.5 py
           </ul>
           <p v-else class="mt-2 text-xs text-muted">Sin descansos programados.</p>
           <div class="mt-3 grid gap-2 sm:grid-cols-[auto_auto_1fr_auto]">
-            <input
-              v-model="nuevoDescanso.desde"
-              type="date"
-              aria-label="Desde"
-              class="rounded-md border border-line bg-background-soft px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
-              :disabled="!puedeEditar"
-            />
-            <input
-              v-model="nuevoDescanso.hasta"
-              type="date"
-              aria-label="Hasta (opcional)"
-              class="rounded-md border border-line bg-background-soft px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
-              :disabled="!puedeEditar"
-            />
+            <FechaInput v-model="nuevoDescanso.desde" aria-label="Desde" :disabled="!puedeEditar" />
+            <FechaInput v-model="nuevoDescanso.hasta" :min="nuevoDescanso.desde || '1900-01-01'" aria-label="Hasta (opcional)" :disabled="!puedeEditar" />
             <input
               v-model="nuevoDescanso.motivo"
               type="text"

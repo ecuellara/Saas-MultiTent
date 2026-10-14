@@ -15,6 +15,8 @@ import {
 import { mensajeDeError } from '../../services/errores'
 import { hoyLocal } from '../../services/fechas'
 import { useSessionStore } from '../../stores/session'
+import { DocumentTextIcon } from '@heroicons/vue/24/outline'
+import ModuloHero from '../../components/ui/ModuloHero.vue'
 
 /**
  * Pantalla de consentimientos: plantillas (lista + alta) y alta de
@@ -123,26 +125,25 @@ async function guardarAlta(): Promise<void> {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl">
-    <header class="flex flex-wrap items-center justify-between gap-3">
-      <h2 class="text-lg font-semibold text-ink">Consentimientos</h2>
+  <div class="space-y-4">
+    <ModuloHero etiqueta="Documentos clínicos" titulo="Consentimientos" descripcion="Administra plantillas y genera consentimientos asociados a pacientes." :icono="DocumentTextIcon" :metrica="String(plantillas.length)" metrica-etiqueta="Plantillas">
       <div v-if="puedeEscribir" class="flex gap-2">
         <button
           type="button"
-          class="rounded-md border border-line px-3 py-2 text-sm text-ink hover:bg-background-soft"
+           class="rounded-full border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-background-soft"
           @click="abrirAlta"
         >
           Nuevo consentimiento
         </button>
         <button
           type="button"
-          class="rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-dark"
+           class="rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-dark"
           @click="modalPlantilla = true"
         >
           Nueva plantilla
         </button>
       </div>
-    </header>
+    </ModuloHero>
 
     <AvisoError v-if="error" class="mt-4" :mensaje="error" />
     <CargandoBloque v-if="cargando" texto="Cargando plantillas…" />
@@ -154,11 +155,11 @@ async function guardarAlta(): Promise<void> {
       detalle="Crea la primera con «Nueva plantilla»."
     />
 
-    <ul v-else class="mt-4 space-y-2">
+    <ul v-else class="grid gap-3 md:grid-cols-2">
       <li
         v-for="p in plantillas"
         :key="p.id"
-        class="rounded-lg border border-line bg-background p-4"
+        class="rounded-2xl border border-line bg-background p-4 shadow-sm"
       >
         <p class="flex flex-wrap items-center gap-2">
           <span class="text-sm font-medium text-ink">{{ p.titulo }}</span>

@@ -7,6 +7,7 @@ import { mensajeDeError } from '../../services/errores'
 import { hoyLocal } from '../../services/fechas'
 import { formatoMoneda } from '../../services/pagos'
 import AvisoError from '../ui/AvisoError.vue'
+import FechaInput from '../ui/FechaInput.vue'
 import ModalBase from '../ui/ModalBase.vue'
 import SelectorEntidad from '../ui/SelectorEntidad.vue'
 
@@ -134,12 +135,7 @@ async function guardar(): Promise<void> {
 
       <div>
         <label class="mb-1 block text-xs font-medium text-ink" for="compra-fecha">Fecha</label>
-        <input
-          id="compra-fecha"
-          v-model="form.fecha"
-          type="date"
-          class="w-full rounded-md border border-line bg-background-soft px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
-        />
+        <FechaInput id="compra-fecha" v-model="form.fecha" />
       </div>
 
       <div>

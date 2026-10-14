@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ArrowRightIcon, ClipboardDocumentListIcon, MagnifyingGlassIcon, PlusIcon } from '@heroicons/vue/24/outline'
 import PacienteFormModal from '../../components/pacientes/PacienteFormModal.vue'
 import AvisoError from '../../components/ui/AvisoError.vue'
 import CargandoBloque from '../../components/ui/CargandoBloque.vue'
@@ -98,37 +99,45 @@ function ver(p: Paciente): void {
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl">
-    <header class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 class="text-lg font-semibold text-ink">Pacientes</h2>
-        <p class="mt-0.5 text-sm text-muted">
-          {{ pacientes.length }} en la clínica<span v-if="busqueda"> · {{ filtrados.length }} coinciden</span>
-        </p>
+  <div class="mx-auto max-w-6xl space-y-4">
+    <section class="overflow-hidden rounded-[28px] border border-line bg-background shadow-sm">
+      <div class="grid gap-6 px-6 py-6 lg:grid-cols-[1.2fr_0.8fr] lg:px-8 lg:py-8">
+        <div class="space-y-4">
+          <div class="inline-flex items-center gap-2 rounded-full border border-line bg-background-soft/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted">
+            <ClipboardDocumentListIcon class="h-4 w-4 text-secondary" />Gestión de pacientes
+          </div>
+          <div class="space-y-2">
+            <h2 class="text-3xl font-semibold tracking-tight text-ink">Seguimiento clínico con toda la ficha en un solo lugar.</h2>
+            <p class="max-w-2xl text-sm leading-6 text-muted">Busca por documento, nombre o teléfono y abre el expediente sin perder contexto.</p>
+          </div>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div class="rounded-2xl border border-line bg-background-soft/60 p-4">
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Pacientes totales</p>
+            <p class="mt-2 text-3xl font-semibold text-ink">{{ pacientes.length }}</p>
+            <p class="mt-1 text-sm text-muted">Base activa de la clínica.</p>
+          </div>
+          <button v-if="puedeEscribir" type="button" class="group flex items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-4 text-sm font-semibold text-white shadow-[0_14px_30px_-16px_rgba(7,86,163,0.8)] transition hover:-translate-y-0.5 hover:bg-primary-dark" @click="abrirNuevo">
+            <PlusIcon class="h-5 w-5 transition-transform group-hover:scale-110" />Nuevo paciente
+          </button>
+        </div>
       </div>
-      <button
-        v-if="puedeEscribir"
-        type="button"
-        class="rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-dark"
-        @click="abrirNuevo"
-      >
-        Nuevo paciente
-      </button>
-    </header>
+    </section>
 
-    <input
-      v-model="busqueda"
-      type="search"
-      placeholder="Buscar por nombre, documento o teléfono…"
-      class="mt-4 w-full rounded-md border border-line bg-background px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary sm:max-w-sm"
-    />
+    <div class="grid gap-3 rounded-[28px] border border-line bg-background p-5 shadow-sm sm:grid-cols-[1fr_auto] sm:items-center">
+      <div class="relative">
+        <MagnifyingGlassIcon class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
+        <input v-model="busqueda" type="search" placeholder="DNI, nombre, teléfono…"
+          class="w-full rounded-2xl border border-line bg-background-soft/60 py-3 pl-10 pr-4 text-sm text-ink transition focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-secondary/30" />
+      </div>
+      <p class="text-sm text-muted">{{ filtrados.length }} resultado{{ filtrados.length === 1 ? '' : 's' }}</p>
+    </div>
 
-    <AvisoError v-if="error" class="mt-4" :mensaje="error" />
+    <AvisoError v-if="error" :mensaje="error" />
     <CargandoBloque v-if="cargando" texto="Cargando pacientes…" />
 
     <EstadoVacio
       v-else-if="filtrados.length === 0"
-      class="mt-4"
       :titulo="busqueda ? 'Sin coincidencias' : 'Todavía no hay pacientes'"
       :detalle="
         busqueda
@@ -139,9 +148,14 @@ function ver(p: Paciente): void {
       "
     />
 
-    <div v-else class="mt-4 overflow-x-auto rounded-lg border border-line bg-background">
-      <table class="w-full text-sm">
-        <thead class="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+    <div v-else class="overflow-hidden rounded-[28px] border border-line bg-background shadow-sm">
+      <div class="border-b border-line px-5 py-4">
+        <h3 class="text-lg font-semibold text-ink">Listado de pacientes</h3>
+        <p class="text-sm text-muted">Información de contacto y acceso al expediente clínico.</p>
+      </div>
+      <div class="overflow-x-auto">
+      <table class="w-full min-w-[760px] text-sm">
+        <thead class="bg-background-soft/70 text-left text-xs uppercase tracking-wide text-muted">
           <tr>
             <th class="px-4 py-2 font-medium">Paciente</th>
             <th class="px-4 py-2 font-medium">Documento</th>
@@ -155,12 +169,12 @@ function ver(p: Paciente): void {
           <tr
             v-for="p in filtrados"
             :key="p.id"
-            class="border-b border-line last:border-0 hover:bg-background-soft"
+            class="border-t border-line/70 transition first:border-0 hover:bg-background-soft/60"
           >
             <td class="px-4 py-2">
               <button
                 type="button"
-                class="text-left font-medium text-ink hover:text-primary"
+                class="text-left font-semibold text-ink hover:text-primary"
                 @click="ver(p)"
               >
                 {{ p.apellidos }}, {{ p.nombres }}
@@ -182,10 +196,10 @@ function ver(p: Paciente): void {
             <td class="whitespace-nowrap px-4 py-2 text-right">
               <button
                 type="button"
-                class="rounded px-2 py-1 text-xs text-primary hover:bg-background-soft"
+                class="inline-flex items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-dark"
                 @click="ver(p)"
               >
-                Ver
+                Abrir ficha <ArrowRightIcon class="h-3.5 w-3.5" />
               </button>
               <button
                 v-if="puedeEscribir"
@@ -207,6 +221,7 @@ function ver(p: Paciente): void {
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
 
     <PacienteFormModal

@@ -7,6 +7,7 @@ import { crearPago, METODOS_PAGO, type CuotaEntrada, type Pago } from '../../ser
 import { mensajeDeError } from '../../services/errores'
 import { deInputFecha, hoyLocal } from '../../services/fechas'
 import AvisoError from '../ui/AvisoError.vue'
+import FechaInput from '../ui/FechaInput.vue'
 import ModalBase from '../ui/ModalBase.vue'
 import SelectorEntidad from '../ui/SelectorEntidad.vue'
 
@@ -195,11 +196,7 @@ async function guardar(): Promise<void> {
 
       <div>
         <label class="mb-1 block text-xs font-medium text-ink">Fecha</label>
-        <input
-          v-model="form.fecha"
-          type="date"
-          class="w-full rounded-md border border-line bg-background-soft px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
-        />
+        <FechaInput v-model="form.fecha" />
       </div>
 
       <div class="sm:col-span-2">
@@ -286,11 +283,7 @@ async function guardar(): Promise<void> {
           </div>
           <div>
             <label class="mb-1 block text-xs text-muted">Vence</label>
-            <input
-              v-model="c.fechaVencimiento"
-              type="date"
-              class="rounded-md border border-line bg-background-soft px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
-            />
+            <FechaInput v-model="c.fechaVencimiento" />
           </div>
           <button
             type="button"

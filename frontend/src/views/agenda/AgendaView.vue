@@ -6,6 +6,7 @@ import AvisoError from '../../components/ui/AvisoError.vue'
 import CargandoBloque from '../../components/ui/CargandoBloque.vue'
 import EstadoVacio from '../../components/ui/EstadoVacio.vue'
 import ModalConfirmar from '../../components/ui/ModalConfirmar.vue'
+import FechaInput from '../../components/ui/FechaInput.vue'
 import { listarTratamientos, type Tratamiento } from '../../services/catalogos'
 import {
   actualizarCita,
@@ -19,6 +20,8 @@ import { mensajeDeError } from '../../services/errores'
 import { fechaLarga, hora12, hoyLocal, sumarDias } from '../../services/fechas'
 import { listarPacientes, type Paciente } from '../../services/pacientes'
 import { useSessionStore } from '../../stores/session'
+import { CalendarDaysIcon } from '@heroicons/vue/24/outline'
+import ModuloHero from '../../components/ui/ModuloHero.vue'
 
 /**
  * Agenda del día.
@@ -119,24 +122,20 @@ async function alCrear(): Promise<void> {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl">
-    <header class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 class="text-lg font-semibold text-ink">Agenda</h2>
-        <p class="mt-0.5 text-sm capitalize text-muted">{{ fechaLarga(fecha) }}</p>
-      </div>
+  <div class="space-y-4">
+    <ModuloHero etiqueta="Agenda clínica" :titulo="fechaLarga(fecha)" descripcion="Consulta la jornada, confirma pacientes y registra nuevas citas." :icono="CalendarDaysIcon" :metrica="String(resumen.total)" metrica-etiqueta="Citas del día">
       <button
         v-if="puedeEscribir"
         type="button"
-        class="rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-dark"
+        class="rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-dark"
         @click="modalNueva = true"
       >
         Nueva cita
       </button>
-    </header>
+    </ModuloHero>
 
     <!-- Navegación por días -->
-    <div class="mt-4 flex flex-wrap items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2 rounded-[28px] border border-line bg-background p-4 shadow-sm">
       <button
         type="button"
         class="rounded-md border border-line px-2.5 py-1.5 text-sm text-ink hover:bg-background-soft"
@@ -145,11 +144,7 @@ async function alCrear(): Promise<void> {
       >
         ←
       </button>
-      <input
-        v-model="fecha"
-        type="date"
-        class="rounded-md border border-line bg-background px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
-      />
+      <div class="w-44"><FechaInput v-model="fecha" /></div>
       <button
         type="button"
         class="rounded-md border border-line px-2.5 py-1.5 text-sm text-ink hover:bg-background-soft"

@@ -14,6 +14,8 @@ import { mensajeDeError } from '../../services/errores'
 import { formatearFechaUTC } from '../../services/fechas'
 import { formatoMoneda } from '../../services/pagos'
 import { useSessionStore } from '../../stores/session'
+import { ShoppingCartIcon } from '@heroicons/vue/24/outline'
+import ModuloHero from '../../components/ui/ModuloHero.vue'
 
 const sesion = useSessionStore()
 const router = useRouter()
@@ -51,21 +53,17 @@ async function alCrear(creada: Compra): Promise<void> {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl">
-    <header class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 class="text-lg font-semibold text-ink">Compras</h2>
-        <p class="mt-0.5 text-sm text-muted">{{ compras.length }} registradas</p>
-      </div>
+  <div class="space-y-4">
+    <ModuloHero etiqueta="Abastecimiento" titulo="Compras e ingresos de stock" descripcion="Registra compras por proveedor y consulta el detalle de cada movimiento." :icono="ShoppingCartIcon" :metrica="String(compras.length)" metrica-etiqueta="Registradas">
       <button
         v-if="puedeEscribir"
         type="button"
-        class="rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-dark"
+        class="rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-dark"
         @click="modalNueva = true"
       >
         Nueva compra
       </button>
-    </header>
+    </ModuloHero>
 
     <AvisoError v-if="error" class="mt-4" :mensaje="error" />
     <CargandoBloque v-if="cargando" texto="Cargando compras…" />
@@ -77,11 +75,11 @@ async function alCrear(creada: Compra): Promise<void> {
       detalle="Registra la primera con «Nueva compra»: sube el stock y genera el egreso."
     />
 
-    <ul v-else class="mt-4 space-y-2">
+    <ul v-else class="grid gap-3 md:grid-cols-2">
       <li
         v-for="c in compras"
         :key="c.id"
-        class="rounded-lg border border-line bg-background p-4"
+        class="rounded-2xl border border-line bg-background p-4 shadow-sm transition hover:border-primary/50"
       >
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div class="min-w-0">

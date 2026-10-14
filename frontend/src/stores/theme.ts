@@ -8,7 +8,7 @@ type Tema = 'light' | 'dark'
  */
 export const useThemeStore = defineStore('theme', {
   state: () => ({
-    tema: (localStorage.getItem('theme') as Tema | null) ?? 'light',
+    tema: ((localStorage.getItem('theme') as Tema | null) ?? (document.documentElement.classList.contains('dark') ? 'dark' : 'light')) as Tema,
   }),
   getters: {
     oscuro: (s) => s.tema === 'dark',

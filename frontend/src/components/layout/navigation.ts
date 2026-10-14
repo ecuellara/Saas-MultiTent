@@ -22,6 +22,7 @@ export interface ItemNavegacion {
   permiso?: string
   /** Feature del plan; sin ella el item no se muestra (p. ej. multi-sede). */
   feature?: string
+  seccion: 'Principal' | 'Operación' | 'Administración' | 'Sistema'
 }
 
 /**
@@ -32,21 +33,22 @@ export interface ItemNavegacion {
  * permiso en el servidor (hoy `patients.read` en toda lectura clínica).
  */
 export const NAVEGACION: ItemNavegacion[] = [
-  { etiqueta: 'Panel', ruta: '/', icono: HomeIcon },
-  { etiqueta: 'Pacientes', ruta: '/pacientes', icono: UsersIcon, permiso: 'patients.read' },
-  { etiqueta: 'Agenda', ruta: '/agenda', icono: CalendarDaysIcon, permiso: 'appointments.read' },
-  { etiqueta: 'Odontograma', ruta: '/odontograma', icono: BeakerIcon, permiso: 'patients.read' },
+  { etiqueta: 'Panel', ruta: '/', icono: HomeIcon, seccion: 'Principal' },
+  { etiqueta: 'Pacientes', ruta: '/pacientes', icono: UsersIcon, permiso: 'patients.read', seccion: 'Principal' },
+  { etiqueta: 'Agenda', ruta: '/agenda', icono: CalendarDaysIcon, permiso: 'appointments.read', seccion: 'Principal' },
+  { etiqueta: 'Odontograma', ruta: '/odontograma', icono: BeakerIcon, permiso: 'patients.read', seccion: 'Principal' },
   {
     etiqueta: 'Consentimientos',
     ruta: '/consentimientos',
     icono: ClipboardDocumentCheckIcon,
     permiso: 'consents.read',
+    seccion: 'Principal',
   },
-  { etiqueta: 'Pagos', ruta: '/pagos', icono: BanknotesIcon, permiso: 'payments.read' },
-  { etiqueta: 'Inventario', ruta: '/inventario', icono: ArchiveBoxIcon, permiso: 'inventory.read' },
-  { etiqueta: 'Compras', ruta: '/compras', icono: ShoppingCartIcon, permiso: 'inventory.read' },
-  { etiqueta: 'Proveedores', ruta: '/proveedores', icono: TruckIcon, permiso: 'inventory.read' },
-  { etiqueta: 'Usuarios', ruta: '/usuarios', icono: UserGroupIcon, permiso: 'users.manage' },
-  { etiqueta: 'Sedes', ruta: '/sedes', icono: BuildingOfficeIcon, permiso: 'sedes.manage' },
-  { etiqueta: 'Configuración', ruta: '/configuracion', icono: Cog6ToothIcon },
+  { etiqueta: 'Pagos', ruta: '/pagos', icono: BanknotesIcon, permiso: 'payments.read', seccion: 'Principal' },
+  { etiqueta: 'Inventario', ruta: '/inventario', icono: ArchiveBoxIcon, permiso: 'inventory.read', seccion: 'Operación' },
+  { etiqueta: 'Compras', ruta: '/compras', icono: ShoppingCartIcon, permiso: 'inventory.read', seccion: 'Operación' },
+  { etiqueta: 'Proveedores', ruta: '/proveedores', icono: TruckIcon, permiso: 'inventory.read', seccion: 'Operación' },
+  { etiqueta: 'Usuarios', ruta: '/usuarios', icono: UserGroupIcon, permiso: 'users.manage', seccion: 'Administración' },
+  { etiqueta: 'Sedes', ruta: '/sedes', icono: BuildingOfficeIcon, permiso: 'sedes.manage', seccion: 'Administración' },
+  { etiqueta: 'Configuración', ruta: '/configuracion', icono: Cog6ToothIcon, seccion: 'Sistema' },
 ]

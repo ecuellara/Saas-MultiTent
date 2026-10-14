@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AvisoError from '../../components/ui/AvisoError.vue'
+import ThemeToggle from '../../components/ui/ThemeToggle.vue'
+import { ArrowRightIcon, BuildingOffice2Icon, ChartBarSquareIcon, ShieldCheckIcon } from '@heroicons/vue/24/outline'
 import { usePlataformaStore } from '../../stores/plataforma'
 
 /**
@@ -49,11 +51,19 @@ async function irDestino(): Promise<void> {
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-background-soft px-4">
-    <div class="w-full max-w-sm">
+  <div class="relative flex min-h-screen items-center justify-center overflow-hidden bg-[linear-gradient(135deg,#07131d,#0b2a45_45%,#0756a3)] px-4 py-8">
+    <img src="/login-bg.svg" alt="" class="absolute inset-0 h-full w-full object-cover opacity-20" />
+    <div class="absolute right-4 top-4 z-10"><ThemeToggle compacto /></div>
+    <div class="relative grid w-full max-w-5xl overflow-hidden rounded-[2rem] border border-white/15 bg-background shadow-2xl md:grid-cols-[.9fr_1.1fr]">
+      <div class="relative hidden flex-col justify-between overflow-hidden bg-primary p-9 text-white md:flex">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,.2),transparent_30%),linear-gradient(160deg,rgba(7,86,163,.95),rgba(18,184,206,.75))]" />
+        <div class="relative"><div class="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[.22em]">Acceso interno</div><div class="mt-7 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15"><ShieldCheckIcon class="h-8 w-8" /></div><h2 class="mt-5 text-3xl font-semibold">Operación de plataforma</h2><p class="mt-3 text-sm leading-6 text-white/80">Gestiona clínicas, planes y suscripciones desde un entorno protegido con MFA.</p></div>
+        <div class="relative space-y-3 text-sm text-white/90"><p class="flex items-center gap-3 rounded-2xl bg-white/10 px-3 py-2"><BuildingOffice2Icon class="h-5 w-5" />Administración multi-clínica</p><p class="flex items-center gap-3 rounded-2xl bg-white/10 px-3 py-2"><ChartBarSquareIcon class="h-5 w-5" />Planes y operación central</p></div>
+      </div>
+      <div class="p-7 sm:p-10">
+      <div class="mx-auto w-full max-w-md">
       <div class="mb-6 text-center">
-        <h1 class="text-xl font-semibold text-ink">Panel de plataforma</h1>
-        <p class="mt-1 text-sm text-muted">Acceso restringido al equipo del SaaS.</p>
+        <p class="text-xs font-semibold uppercase tracking-[.24em] text-muted">Dental SaaS</p><h1 class="mt-2 text-3xl font-semibold text-ink">Panel de plataforma</h1><p class="mt-2 text-sm text-muted">Acceso restringido al equipo del SaaS.</p>
       </div>
 
       <p
@@ -67,7 +77,7 @@ async function irDestino(): Promise<void> {
       <!-- Paso 1: clave -->
       <form
         v-if="plataforma.paso === 'clave'"
-        class="rounded-lg border border-line bg-background p-6 shadow-sm"
+         class="space-y-4"
         @submit.prevent="entrar"
       >
         <label class="mb-1 block text-sm font-medium text-ink" for="email">Correo</label>
@@ -77,7 +87,7 @@ async function irDestino(): Promise<void> {
           type="email"
           required
           autocomplete="username"
-          class="mb-4 w-full rounded-md border border-line bg-background-soft px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
+           class="mb-4 w-full rounded-2xl border border-line bg-background-soft/60 px-4 py-3 text-sm text-ink focus:outline-none focus:ring-4 focus:ring-primary/10"
         />
         <label class="mb-1 block text-sm font-medium text-ink" for="password">Contraseña</label>
         <input
@@ -86,22 +96,22 @@ async function irDestino(): Promise<void> {
           type="password"
           required
           autocomplete="current-password"
-          class="w-full rounded-md border border-line bg-background-soft px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
+           class="w-full rounded-2xl border border-line bg-background-soft/60 px-4 py-3 text-sm text-ink focus:outline-none focus:ring-4 focus:ring-primary/10"
         />
         <AvisoError v-if="plataforma.error" class="mt-3" :mensaje="plataforma.error" />
         <button
           type="submit"
           :disabled="plataforma.cargando"
-          class="mt-5 w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white transition-opacity hover:bg-primary-dark disabled:opacity-60"
+           class="group mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 font-semibold text-white hover:bg-primary-dark disabled:opacity-60"
         >
-          {{ plataforma.cargando ? 'Entrando…' : 'Entrar' }}
+           {{ plataforma.cargando ? 'Entrando…' : 'Entrar' }}<ArrowRightIcon v-if="!plataforma.cargando" class="h-4 w-4" />
         </button>
       </form>
 
       <!-- Paso 2: enrolar TOTP -->
       <div
         v-else-if="plataforma.paso === 'setup'"
-        class="rounded-lg border border-line bg-background p-6 shadow-sm"
+        class="rounded-2xl border border-line bg-background-soft/40 p-5"
       >
         <h2 class="text-sm font-medium text-ink">Activa la verificación en dos pasos</h2>
         <p class="mt-1 text-xs text-muted">
@@ -120,13 +130,13 @@ async function irDestino(): Promise<void> {
             autocomplete="one-time-code"
             maxlength="6"
             required
-            class="w-full rounded-md border border-line bg-background-soft px-3 py-2 text-center font-mono text-lg tracking-widest text-ink focus:outline-none focus:ring-2 focus:ring-primary"
+           class="w-full rounded-2xl border border-line bg-background px-3 py-3 text-center font-mono text-lg tracking-widest text-ink focus:outline-none focus:ring-4 focus:ring-primary/10"
           />
           <AvisoError v-if="plataforma.error" class="mt-3" :mensaje="plataforma.error" />
           <button
             type="submit"
             :disabled="plataforma.cargando"
-            class="mt-4 w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white transition-opacity hover:bg-primary-dark disabled:opacity-60"
+             class="mt-4 w-full rounded-2xl bg-primary px-3 py-3 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60"
           >
             {{ plataforma.cargando ? 'Verificando…' : 'Confirmar' }}
           </button>
@@ -142,7 +152,7 @@ async function irDestino(): Promise<void> {
       <!-- Paso 3: verificar TOTP -->
       <form
         v-else
-        class="rounded-lg border border-line bg-background p-6 shadow-sm"
+         class="rounded-2xl border border-line bg-background-soft/40 p-5"
         @submit.prevent="verificar"
       >
         <h2 class="text-sm font-medium text-ink">Verificación en dos pasos</h2>
@@ -154,13 +164,13 @@ async function irDestino(): Promise<void> {
           autocomplete="one-time-code"
           maxlength="6"
           required
-          class="w-full rounded-md border border-line bg-background-soft px-3 py-2 text-center font-mono text-lg tracking-widest text-ink focus:outline-none focus:ring-2 focus:ring-primary"
+           class="w-full rounded-2xl border border-line bg-background px-3 py-3 text-center font-mono text-lg tracking-widest text-ink focus:outline-none focus:ring-4 focus:ring-primary/10"
         />
         <AvisoError v-if="plataforma.error" class="mt-3" :mensaje="plataforma.error" />
         <button
           type="submit"
           :disabled="plataforma.cargando"
-          class="mt-4 w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-white transition-opacity hover:bg-primary-dark disabled:opacity-60"
+           class="mt-4 w-full rounded-2xl bg-primary px-3 py-3 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60"
         >
           {{ plataforma.cargando ? 'Verificando…' : 'Verificar' }}
         </button>
@@ -172,6 +182,7 @@ async function irDestino(): Promise<void> {
           Usar otra cuenta
         </button>
       </form>
+      </div></div>
     </div>
   </div>
 </template>

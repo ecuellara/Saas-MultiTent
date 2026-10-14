@@ -4,6 +4,7 @@ import { formatoMoneda, METODOS_PAGO, num, registrarAbono, type Pago } from '../
 import { mensajeDeError } from '../../services/errores'
 import { hoyLocal } from '../../services/fechas'
 import AvisoError from '../ui/AvisoError.vue'
+import FechaInput from '../ui/FechaInput.vue'
 import ModalBase from '../ui/ModalBase.vue'
 
 const props = defineProps<{ pago: Pago }>()
@@ -84,12 +85,7 @@ async function guardar(): Promise<void> {
 
       <div>
         <label class="mb-1 block text-xs font-medium text-ink" for="abono-fecha">Fecha</label>
-        <input
-          id="abono-fecha"
-          v-model="form.fecha"
-          type="date"
-          class="w-full rounded-md border border-line bg-background-soft px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
-        />
+        <FechaInput id="abono-fecha" v-model="form.fecha" />
       </div>
 
       <div class="flex justify-end gap-2">

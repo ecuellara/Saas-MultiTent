@@ -18,6 +18,8 @@ import {
 import { mensajeDeError } from '../../services/errores'
 import { formatearFechaUTC } from '../../services/fechas'
 import { useSessionStore } from '../../stores/session'
+import { BanknotesIcon } from '@heroicons/vue/24/outline'
+import ModuloHero from '../../components/ui/ModuloHero.vue'
 
 /**
  * Listado de pagos.
@@ -109,32 +111,28 @@ async function alCrear(): Promise<void> {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl">
-    <header class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 class="text-lg font-semibold text-ink">Pagos</h2>
-        <p class="mt-0.5 text-sm text-muted">{{ formatoMoneda(porCobrar) }} por cobrar</p>
-      </div>
+  <div class="space-y-4">
+    <ModuloHero etiqueta="Movimientos y caja" titulo="Pagos y saldos de pacientes" descripcion="Registra cobros, revisa saldos pendientes y consulta cada recibo." :icono="BanknotesIcon" :metrica="formatoMoneda(porCobrar)" metrica-etiqueta="Por cobrar">
       <button
         v-if="puedeEscribir"
         type="button"
-        class="rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-dark"
+        class="rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-dark"
         @click="modalNuevo = true"
       >
         Nuevo pago
       </button>
-    </header>
+    </ModuloHero>
 
-    <div class="mt-4 flex flex-wrap items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2 rounded-[28px] border border-line bg-background p-4 shadow-sm">
       <input
         v-model="busqueda"
         type="text"
         placeholder="Buscar por concepto, recibo o paciente…"
-        class="min-w-0 flex-1 rounded-md border border-line bg-background px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
+        class="min-w-0 flex-1 rounded-2xl border border-line bg-background-soft/60 px-3 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
       />
       <select
         v-model="filtroEstado"
-        class="rounded-md border border-line bg-background px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
+        class="rounded-2xl border border-line bg-background-soft/60 px-3 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
         aria-label="Filtrar por estado"
       >
         <option value="">Todos</option>
@@ -155,11 +153,11 @@ async function alCrear(): Promise<void> {
       :detalle="busqueda || filtroEstado ? 'Ningún pago coincide con el filtro.' : 'Registra el primero con «Nuevo pago».'"
     />
 
-    <ul v-else class="mt-4 space-y-2">
+    <ul v-else class="grid gap-3 md:grid-cols-2">
       <li
         v-for="p in filtrados"
         :key="p.id"
-        class="rounded-lg border border-line bg-background p-4"
+        class="rounded-2xl border border-line bg-background p-4 shadow-sm transition hover:border-primary/50"
         :class="p.estado === 'anulado' && 'opacity-60'"
       >
         <div class="flex flex-wrap items-start justify-between gap-3">

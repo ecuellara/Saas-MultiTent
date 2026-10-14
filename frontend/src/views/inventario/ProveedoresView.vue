@@ -10,6 +10,8 @@ import {
 } from '../../services/proveedores'
 import { mensajeDeError } from '../../services/errores'
 import { useSessionStore } from '../../stores/session'
+import { TruckIcon } from '@heroicons/vue/24/outline'
+import ModuloHero from '../../components/ui/ModuloHero.vue'
 
 const sesion = useSessionStore()
 
@@ -55,28 +57,24 @@ async function alGuardar(): Promise<void> {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl">
-    <header class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 class="text-lg font-semibold text-ink">Proveedores</h2>
-        <p class="mt-0.5 text-sm text-muted">{{ proveedores.length }} registrados</p>
-      </div>
+  <div class="space-y-4">
+    <ModuloHero etiqueta="Abastecimiento" titulo="Proveedores" descripcion="Administra datos de contacto y referencias de tus proveedores." :icono="TruckIcon" :metrica="String(proveedores.length)" metrica-etiqueta="Registrados">
       <button
         v-if="puedeEscribir"
         type="button"
-        class="rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-dark"
+        class="rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-dark"
         @click="modalNuevo = true"
       >
         Nuevo proveedor
       </button>
-    </header>
+    </ModuloHero>
 
-    <div class="mt-4">
+    <div class="rounded-[28px] border border-line bg-background p-4 shadow-sm">
       <input
         v-model="busqueda"
         type="text"
         placeholder="Buscar por nombre, RUC o contacto…"
-        class="w-full rounded-md border border-line bg-background px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
+        class="w-full rounded-2xl border border-line bg-background-soft/60 px-3 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
       />
     </div>
 
@@ -90,11 +88,11 @@ async function alGuardar(): Promise<void> {
       :detalle="busqueda ? 'Ninguno coincide con la búsqueda.' : 'Registra el primero con «Nuevo proveedor».'"
     />
 
-    <ul v-else class="mt-4 space-y-2">
+    <ul v-else class="grid gap-3 md:grid-cols-2">
       <li
         v-for="p in filtrados"
         :key="p.id"
-        class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-line bg-background p-4"
+        class="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-line bg-background p-4 shadow-sm"
       >
         <div class="min-w-0">
           <p class="truncate text-sm font-medium text-ink">{{ p.nombre }}</p>

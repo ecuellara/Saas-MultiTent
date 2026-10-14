@@ -31,10 +31,10 @@ onUnmounted(() => document.removeEventListener('keydown', alPulsarTecla))
     @click.self="emit('cerrar')"
   >
     <div
-      class="w-full rounded-lg border border-line bg-background shadow-xl"
+      class="flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-[24px] border border-line bg-background shadow-2xl"
       :class="ANCHOS[ancho]"
     >
-      <header class="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
+      <header class="flex shrink-0 items-center justify-between gap-4 border-b border-line px-5 py-4">
         <h2 class="truncate text-sm font-semibold text-ink">{{ titulo }}</h2>
         <button
           type="button"
@@ -48,11 +48,11 @@ onUnmounted(() => document.removeEventListener('keydown', alPulsarTecla))
         </button>
       </header>
 
-      <div class="px-4 py-4">
+      <div class="min-h-0 overflow-y-auto px-4 py-4 sm:px-5">
         <slot />
       </div>
 
-      <footer v-if="$slots.pie" class="border-t border-line px-4 py-3">
+      <footer v-if="$slots.pie" class="shrink-0 border-t border-line bg-background px-4 py-3 sm:px-5">
         <slot name="pie" />
       </footer>
     </div>

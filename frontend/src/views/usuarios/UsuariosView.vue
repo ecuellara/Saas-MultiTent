@@ -23,6 +23,8 @@ import {
 } from '../../services/usuarios'
 import { mensajeDeError } from '../../services/errores'
 import { useSessionStore } from '../../stores/session'
+import { UserGroupIcon } from '@heroicons/vue/24/outline'
+import ModuloHero from '../../components/ui/ModuloHero.vue'
 
 /**
  * Pantalla de usuarios y roles.
@@ -188,12 +190,7 @@ async function guardarPermisos(): Promise<void> {
 
 <template>
   <div class="mx-auto max-w-6xl space-y-8">
-    <section>
-      <header class="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 class="text-lg font-semibold text-ink">Usuarios</h2>
-          <p class="mt-0.5 text-sm text-muted">{{ usuarios.length }} en el equipo</p>
-        </div>
+    <ModuloHero etiqueta="Administración" titulo="Usuarios y roles" descripcion="Gestiona el equipo, sus sedes y los permisos efectivos de cada rol." :icono="UserGroupIcon" :metrica="String(usuarios.length)" metrica-etiqueta="En el equipo">
         <button
           v-if="puedeRoles"
           type="button"
@@ -202,7 +199,8 @@ async function guardarPermisos(): Promise<void> {
         >
           Nuevo usuario
         </button>
-      </header>
+    </ModuloHero>
+    <section>
 
       <div class="mt-4">
         <input

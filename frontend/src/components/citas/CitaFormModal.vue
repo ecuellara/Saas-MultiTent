@@ -14,6 +14,7 @@ import { deInputFecha, hoyLocal, sumarMinutos } from '../../services/fechas'
 import { listarPacientes, type Paciente } from '../../services/pacientes'
 import { useSessionStore } from '../../stores/session'
 import AvisoError from '../ui/AvisoError.vue'
+import FechaInput from '../ui/FechaInput.vue'
 import ModalBase from '../ui/ModalBase.vue'
 import SelectorEntidad from '../ui/SelectorEntidad.vue'
 
@@ -181,13 +182,7 @@ async function guardar(): Promise<void> {
 
       <div>
         <label class="mb-1 block text-xs font-medium text-ink" for="cita-fecha">Fecha</label>
-        <input
-          id="cita-fecha"
-          v-model="form.fecha"
-          type="date"
-          :min="hoy"
-          class="w-full rounded-md border border-line bg-background-soft px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
-        />
+        <FechaInput id="cita-fecha" v-model="form.fecha" :min="hoy" />
       </div>
 
       <div class="grid grid-cols-2 gap-3">

@@ -65,6 +65,17 @@ export function hoyLocal(): string {
   return `${d.getFullYear()}-${mes}-${dia}`
 }
 
+/** `aaaa-mm-dd` de hoy en la zona de la clínica (America/Lima). */
+export function hoyLima(): string {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Lima',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+  return partes
+}
+
 /** Suma días a una fecha `aaaa-mm-dd` (en UTC, para no desplazar el día). */
 export function sumarDias(fecha: string, dias: number): string {
   const d = new Date(`${fecha}T00:00:00.000Z`)
@@ -94,10 +105,10 @@ export function calcularEdad(fechaNac: string | null): number | null {
   if (!fechaNac) return null
   const nace = new Date(fechaNac)
   if (Number.isNaN(nace.getTime())) return null
-  const hoy = new Date()
-  let edad = hoy.getFullYear() - nace.getUTCFullYear()
-  const m = hoy.getMonth() - nace.getUTCMonth()
-  if (m < 0 || (m === 0 && hoy.getDate() < nace.getUTCDate())) edad--
+  const [anioHoy, mesHoy, diaHoy] = hoyLima().split('-').map(Number)
+  let edad = anioHoy - nace.getUTCFullYear()
+  const m = mesHoy - (nace.getUTCMonth() + 1)
+  if (m < 0 || (m === 0 && diaHoy < nace.getUTCDate())) edad--
   return edad >= 0 ? edad : null
 }
 

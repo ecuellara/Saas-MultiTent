@@ -13,6 +13,8 @@ import {
 import { mensajeDeError } from '../../services/errores'
 import { formatoMoneda } from '../../services/pagos'
 import { useSessionStore } from '../../stores/session'
+import { ArchiveBoxIcon } from '@heroicons/vue/24/outline'
+import ModuloHero from '../../components/ui/ModuloHero.vue'
 
 const sesion = useSessionStore()
 
@@ -63,30 +65,25 @@ async function alMover(): Promise<void> {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl">
-    <header class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 class="text-lg font-semibold text-ink">Inventario</h2>
-        <p class="mt-0.5 text-sm text-muted">
-          {{ insumos.length }} insumos<span v-if="nBajoMinimo > 0"> · {{ nBajoMinimo }} bajo mínimo</span>
-        </p>
-      </div>
+  <div class="space-y-4">
+    <ModuloHero etiqueta="Inventario clínico" titulo="Stock e insumos" descripcion="Controla existencias, mínimos y movimientos de cada insumo." :icono="ArchiveBoxIcon" :metrica="String(insumos.length)" metrica-etiqueta="Insumos">
       <button
         v-if="puedeEscribir"
         type="button"
-        class="rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-dark"
+        class="rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-dark"
         @click="modalNuevo = true"
       >
         Nuevo insumo
       </button>
-    </header>
+    </ModuloHero>
+    <p v-if="nBajoMinimo" class="rounded-2xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm font-medium text-warning">{{ nBajoMinimo }} insumo{{ nBajoMinimo === 1 ? '' : 's' }} por debajo del stock mínimo.</p>
 
-    <div class="mt-4 flex flex-wrap items-center gap-2">
+    <div class="flex flex-wrap items-center gap-3 rounded-[28px] border border-line bg-background p-4 shadow-sm">
       <input
         v-model="busqueda"
         type="text"
         placeholder="Buscar por nombre o unidad…"
-        class="min-w-0 flex-1 rounded-md border border-line bg-background px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
+        class="min-w-0 flex-1 rounded-2xl border border-line bg-background-soft/60 px-3 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
       />
       <label class="flex cursor-pointer items-center gap-2 text-xs text-muted">
         <input v-model="soloBajoMinimo" type="checkbox" class="accent-primary" />
@@ -104,11 +101,11 @@ async function alMover(): Promise<void> {
       :detalle="busqueda || soloBajoMinimo ? 'Ningún insumo coincide con el filtro.' : 'Registra el primero con «Nuevo insumo».'"
     />
 
-    <ul v-else class="mt-4 space-y-2">
+    <ul v-else class="grid gap-3 md:grid-cols-2">
       <li
         v-for="i in filtrados"
         :key="i.id"
-        class="rounded-lg border border-line bg-background p-4"
+        class="rounded-2xl border border-line bg-background p-4 shadow-sm"
         :class="bajoMinimo(i) && 'border-warning'"
       >
         <div class="flex flex-wrap items-start justify-between gap-3">
