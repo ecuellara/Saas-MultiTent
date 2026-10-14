@@ -19,6 +19,7 @@ describe('Izipay pagos únicos REST V4 (stub HTTP local)', () => {
   let recibido: Record<string, unknown>;
   let auth: string | undefined;
   let ruta: string | undefined;
+  let respuestaStub: { httpStatus: number; body: unknown };
   const variables = ['IZIPAY_BASE_URL', 'IZIPAY_SHOP_ID', 'IZIPAY_CLAVE', 'IZIPAY_CLAVE_HMAC', 'IZIPAY_PUBLIC_KEY'];
   const previas = Object.fromEntries(variables.map((k) => [k, process.env[k]]));
   const http = () => request(app.getHttpServer());
@@ -41,8 +42,8 @@ describe('Izipay pagos únicos REST V4 (stub HTTP local)', () => {
       req.on('data', (chunk) => { body += chunk.toString(); });
       req.on('end', () => {
         recibido = JSON.parse(body);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'SUCCESS', answer: { formToken: 'stub-form-token' } }));
+        res.writeHead(respuestaStub.httpStatus, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(respuestaStub.body));
       });
     });
     await new Promise<void>((resolve) => stub.listen(0, '127.0.0.1', resolve));
@@ -58,6 +59,7 @@ describe('Izipay pagos únicos REST V4 (stub HTTP local)', () => {
     H = { Authorization: `Bearer ${login.body.access_token}`, 'X-Tenant-Id': datos.a.tenantId };
   });
   beforeEach(async () => {
+    respuestaStub = { httpStatus: 200, body: { status: 'SUCCESS', answer: { formToken: 'stub-form-token' } } };
     await prisma.auditoria.deleteMany({ where: { accion: 'IZIPAY_ABONO' } });
     await prisma.eventoIzipay.deleteMany({});
     await prisma.intentoIzipay.deleteMany({});
@@ -76,7 +78,8 @@ describe('Izipay pagos únicos REST V4 (stub HTTP local)', () => {
     expect(recibido.amount).toBe(12050);
     expect(recibido.orderId).not.toBe('atacante');
     expect(recibido.currency).toBe('PEN');
-    expect(recibido.formAction).toBe('PAY');
+    // Omitir este parámetro opcional: "PAY" no existe en el contrato REST V4.
+    expect(recibido).not.toHaveProperty('formAction');
     expect(auth).toBe(`Basic ${Buffer.from('shop-test:rest-test').toString('base64')}`);
     expect(ruta).toBe('/api-payment/V4/Charge/CreatePayment');
     expect(recibido.metadata).toMatchObject({ pagoId: datos.a.pagoId, tenantId: datos.a.tenantId });
@@ -84,6 +87,20 @@ describe('Izipay pagos únicos REST V4 (stub HTTP local)', () => {
     expect(desdeCentimos(aCentimos('120.50')).toFixed(2)).toBe('120.50');
     expect(aCentimos('0.29')).toBe(29);
     expect(() => aCentimos('1.001')).toThrow();
+  });
+  it('un ERROR de Izipay dentro de HTTP 200 devuelve un diagnóstico seguro sin token ni claves', async () => {
+    respuestaStub = { httpStatus: 200, body: { status: 'ERROR', answer: { errorCode: 'INT_875',
+      errorMessage: 'invalid formAction rest-test', detailedErrorMessage: 'hmac-test', formToken: 'token-que-no-debe-salir' } } };
+    const r = await token().expect(502);
+    expect(r.body.message).toContain('INT_875');
+    expect(JSON.stringify(r.body)).not.toMatch(/rest-test|hmac-test|token-que-no-debe-salir/);
+    expect((await prisma.pago.findUniqueOrThrow({ where: { id: datos.a.pagoId } })).montoPagado.toFixed(2)).toBe('60.00');
+  });
+  it('un rechazo de Basic auth devuelve un diagnóstico de autenticación', async () => {
+    respuestaStub = { httpStatus: 401, body: { error: 'rest-test' } };
+    const r = await token().expect(502);
+    expect(r.body.message).toContain('autenticación REST');
+    expect(r.body.message).not.toContain('rest-test');
   });
   it('IPN público firmado raw paga el saldo e ignora cabecera tenant falsa', async () => {
     const body = await aviso();

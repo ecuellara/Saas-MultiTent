@@ -7,7 +7,7 @@ import AvisoError from '../ui/AvisoError.vue'
 import ModalBase from '../ui/ModalBase.vue'
 
 const props = defineProps<{ pagoId: string }>()
-const emit = defineEmits<{ cerrar: [mensaje: string]; revisar: [] }>()
+const emit = defineEmits<{ cerrar: [mensaje: string]; revisar: []; exito: [] }>()
 const error = ref('')
 const mensaje = ref('Preparando formulario seguro…')
 let activo = true
@@ -26,7 +26,7 @@ onMounted(async () => {
     formulario = montarSmartForm({
       formToken, publicKey,
       alResultado: async (resultado) => {
-        if (!activo) return
+        if (!activo || aceptado) return
         mensaje.value = 'Verificando la respuesta de Izipay…'
         try {
           const validacion = await validarRetornoIzipay(props.pagoId, resultado)
@@ -37,7 +37,8 @@ onMounted(async () => {
           mensaje.value = aceptado
             ? 'Pago pendiente de confirmar. Esperando la notificación de Izipay.'
             : 'Pago rechazado. Puede volver a intentar o cerrar el formulario.'
-          emit('revisar')
+          if (aceptado) emit('exito')
+          else emit('revisar')
         } catch (e) {
           if (activo) {
             error.value = mensajeDeError(e, 'No se pudo verificar la respuesta del pago')

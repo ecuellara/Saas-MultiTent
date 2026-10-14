@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "typecheck": "vue-tsc -b --force",
+    "test:izipay": "node --experimental-strip-types --test test/izipay-glue.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

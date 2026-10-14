@@ -1,4 +1,4 @@
-import { BadGatewayException, BadRequestException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, GatewayTimeoutException, Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
@@ -68,6 +68,7 @@ function verificarRespuesta(body: Record<string, unknown>, origen: 'ipn' | 'nave
 
 @Injectable()
 export class IzipayService {
+  private readonly logger = new Logger(IzipayService.name);
   constructor(private readonly prisma: PrismaService, private readonly pagos: PagosService) {}
 
   async formtoken(id: string): Promise<{ formToken: string; publicKey: string }> {
@@ -92,18 +93,35 @@ export class IzipayService {
       const respuesta = await fetch(`${config.baseUrl.replace(/\/$/, '')}/api-payment/V4/Charge/CreatePayment`, {
         method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15000),
         headers: { 'Content-Type': 'application/json', Authorization: `Basic ${Buffer.from(`${config.shopId}:${config.clave}`).toString('base64')}` },
-        body: JSON.stringify({ amount, currency: 'PEN', orderId, metadata, formAction: 'PAY', customer: {
+        body: JSON.stringify({ amount, currency: 'PEN', orderId, metadata, customer: {
           ...(paciente.email ? { email: paciente.email } : {}),
           billingDetails: { firstName: paciente.nombres, lastName: paciente.apellidos,
             phoneNumber: paciente.telefono ?? undefined, identityType: paciente.tipoDoc,
             identityCode: paciente.numDoc ?? undefined, address: paciente.direccion ?? undefined, country: 'PE' },
         } }),
       });
-      const data = await respuesta.json() as { status?: string; answer?: { formToken?: string } };
-      if (!respuesta.ok || data.status !== 'SUCCESS' || !data.answer?.formToken) throw new Error('gateway');
+      if (respuesta.status === 401 || respuesta.status === 403) {
+        this.logger.warn({ operacion: 'CreatePayment', httpStatus: respuesta.status, motivo: 'autenticacion_rest' });
+        throw new BadGatewayException('Izipay rechazó la autenticación REST. Revise IZIPAY_SHOP_ID e IZIPAY_CLAVE');
+      }
+      const data = await respuesta.json() as { status?: string; answer?: { formToken?: string; errorCode?: unknown } } | null;
+      if (!respuesta.ok || data?.status !== 'SUCCESS' || typeof data.answer?.formToken !== 'string' || !data.answer.formToken) {
+        // No volcar la respuesta ni mensajes arbitrarios del proveedor: pueden
+        // contener datos del paciente, tokens o la entrada rechazada.
+        const codigo = typeof data?.answer?.errorCode === 'string' && /^[A-Z0-9_]{1,40}$/.test(data.answer.errorCode)
+          ? data.answer.errorCode : undefined;
+        this.logger.warn({ operacion: 'CreatePayment', httpStatus: respuesta.status, codigo: codigo ?? 'RESPUESTA_INVALIDA' });
+        throw new BadGatewayException(`Izipay no pudo crear el formulario${codigo ? ` (código ${codigo})` : ''}. Revise la configuración del comercio`);
+      }
       return { formToken: data.answer.formToken, publicKey: config.publicKey };
-    } catch {
-      throw new BadGatewayException('No se pudo preparar el formulario de Izipay; vuelva a intentar');
+    } catch (e) {
+      if (e instanceof BadGatewayException) throw e;
+      if (e instanceof Error && e.name === 'TimeoutError') {
+        this.logger.warn({ operacion: 'CreatePayment', motivo: 'timeout' });
+        throw new GatewayTimeoutException('Izipay demoró demasiado en responder. Vuelva a intentar preparar el formulario');
+      }
+      this.logger.warn({ operacion: 'CreatePayment', motivo: e instanceof SyntaxError ? 'respuesta_no_json' : 'conexion' });
+      throw new BadGatewayException('No se pudo comunicar con Izipay o su respuesta no fue válida; vuelva a intentar');
     }
   }
 

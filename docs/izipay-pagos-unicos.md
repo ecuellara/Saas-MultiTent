@@ -85,11 +85,25 @@ asigna mediante `KR.setFormConfig`, sin credenciales fijas en HTML ni recursos
 de pago en `index.html`. Al desmontar se eliminan formularios, callbacks,
 scripts y CSS; el singleton de KRGlue se reinicia para permitir la reapertura.
 La limpieza y la apertura siguiente se serializan para evitar carreras.
+`izipay-glue.ts` normaliza el export CommonJS de KRGlue antes de usarlo:
+Vite puede entregarlo envuelto en `default`, en lugar de la instancia directa.
+`npm run test:izipay` en frontend prueba el import del paquete real, su
+`loadLibrary` y la reapertura después del reset con DOM simulado y sin red.
 Cerrar muestra cancelación; `KR.onSubmit` envía exclusivamente el texto firmado,
 hash y selectores a `/pagos/:id/izipay/validar`. Solo después de validarlo se
 muestra rechazo o «pendiente de confirmar»; si falla se indica resultado sin
-verificar. El resultado y «Actualizar estado» consultan GET del
-pago. Cerrar también recarga. **Nunca se envía un abono desde el formulario**:
+verificar. Cuando la validación devuelve `orderStatus: PAID`, se cierra el modal
+y Vue Router navega a `/pagos/:id/resultado`. Se sigue devolviendo `false` desde
+`KR.onSubmit` para evitar el POST/redireccionamiento automático del proveedor:
+la aplicación gestiona el destino después de verificar la firma.
+
+La pantalla de resultado consulta GET del pago al entrar y cada dos segundos,
+hasta 16 consultas, mientras esté pendiente/parcial. Solo muestra «Pago
+confirmado» cuando GET devuelve `estado: pagado`. Si el IPN tarda, permanece
+«pendiente de confirmar» y permite actualizar manualmente. Detiene el sondeo
+al confirmar, anular, encontrar un error o salir de la pantalla.
+El resultado y «Actualizar estado» consultan GET del
+pago. Cerrar manualmente también recarga. **Nunca se envía un abono desde el formulario**:
 solo el IPN cambia el estado persistido.
 
 Referencia Vue oficial:
@@ -124,16 +138,26 @@ Referencias revisadas: `Embedded-PaymentForm-Vue.js/src/components/CheckoutStore
 
 Se conserva el flujo `loadLibrary → setFormConfig → onSubmit → montar → showForm`
 y el tema Neon. El ejemplo usa `addForm` sobre un contenedor vacío; el SaaS usa
-`attachForm` sobre su markup SmartForm propio. La validación del retorno se
+`renderElements` sobre su markup SmartForm propio, sustituyendo `attachForm`,
+marcado como deprecado por Krypton. La validación del retorno se
 incorpora con firma raw y comparación constante, y el IPN utiliza password REST.
 
-Para pago único se envía explícitamente `formAction: PAY`; el ejemplo local usa
-`ASK_REGISTER_PAY`, que también pide registrar el medio de pago. Los datos del
+Para pago único se omite el parámetro opcional `formAction`, utilizando el flujo
+predeterminado de `CreatePayment`; `PAY` es un valor inválido (sandbox: INT_875).
+El ejemplo local usa `ASK_REGISTER_PAY`, que también pide registrar el medio de
+pago. Los errores REST se comprueban incluso dentro de HTTP 200, y el diagnóstico
+expone solo códigos acotados, nunca el payload ni las credenciales. Los datos del
 comprador salen del paciente del SaaS; no se fabrican ciudad, departamento ni
 código postal cuando no existen en su ficha. Credenciales y órdenes se resuelven
 en servidor; los intentos y abonos tienen persistencia e idempotencia PostgreSQL.
 
 ## Aceptación pendiente: sandbox real
+
+Comprobación parcial realizada con credenciales TEST: `CreatePayment` devuelve
+HTTP 200, `status: SUCCESS` y un formToken válido al omitir `formAction`.
+La petición se ejecutó mediante el servicio del SaaS sobre un pago pendiente;
+solo creó un intento, sin enviar tarjeta ni registrar un abono. Sigue pendiente
+la aceptación del formulario en navegador y el IPN público extremo a extremo.
 
 1. Obtener del Back Office las credenciales TEST REST V4 del comercio: shopId,
    password REST, clave HMAC y clave pública; confirmar el origen REST y

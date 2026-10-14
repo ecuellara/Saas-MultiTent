@@ -110,6 +110,12 @@ const router = createRouter({
           meta: { permiso: 'payments.read' },
         },
         {
+          path: 'pagos/:id/resultado',
+          name: 'pago-resultado',
+          component: () => import('../views/pagos/PagoResultadoView.vue'),
+          meta: { permiso: 'payments.read' },
+        },
+        {
           path: 'inventario',
           name: 'inventario',
           component: () => import('../views/inventario/InventarioView.vue'),

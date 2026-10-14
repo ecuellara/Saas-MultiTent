@@ -1,14 +1,6 @@
-import KRGlue from '@lyracom/embedded-form-glue'
+import { KRGlue } from './izipay-glue'
 
 type Krypton = KR & { ready?: unknown }
-// El paquete tipa su API, pero no el estado interno que necesita el unload.
-const glue = KRGlue as typeof KRGlue & {
-  loaded: boolean
-  loading: boolean
-  publicKey: string | null
-  formToken: string | null
-  domain: string | null
-}
 
 const ENDPOINT = 'https://static.micuentaweb.pe'
 const RECURSOS = `${ENDPOINT}/static/js/krypton-client/V4.0`
@@ -108,7 +100,7 @@ export function montarSmartForm(config: {
     })
     await kr.onError(() => { if (activo) config.alError() })
     if (!activo) return
-    const { result } = await kr.attachForm('#izipay-container')
+    const { result } = await kr.renderElements('#izipay-container')
     if (!activo) return
     await kr.showForm(result.formId)
   })()
@@ -129,11 +121,11 @@ export function montarSmartForm(config: {
       // Sin él loadLibrary intentaría reutilizar un KR que ya desmontamos.
       if (recursos.length) {
         delete ventana.KR
-        glue.loaded = false
-        glue.loading = false
-        glue.publicKey = null
-        glue.formToken = null
-        glue.domain = null
+        KRGlue.loaded = false
+        KRGlue.loading = false
+        KRGlue.publicKey = null
+        KRGlue.formToken = null
+        KRGlue.domain = null
       }
     })()
     limpiezaAnterior = destruccion

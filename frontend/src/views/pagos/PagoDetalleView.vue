@@ -83,6 +83,11 @@ async function cerrarIzipay(mensaje: string): Promise<void> {
   await revisarIzipay()
 }
 
+async function alExitoIzipay(): Promise<void> {
+  modalIzipay.value = false
+  await router.push({ name: 'pago-resultado', params: { id } })
+}
+
 async function alAbonar(actualizado: Pago): Promise<void> {
   modalAbono.value = false
   pago.value = actualizado
@@ -198,7 +203,7 @@ async function confirmarAnulacion(): Promise<void> {
         @cerrar="modalAbono = false"
       />
 
-      <IzipayModal v-if="modalIzipay" :pago-id="pago.id" @cerrar="cerrarIzipay" @revisar="revisarIzipay" />
+      <IzipayModal v-if="modalIzipay" :pago-id="pago.id" @cerrar="cerrarIzipay" @revisar="revisarIzipay" @exito="alExitoIzipay" />
 
       <ModalConfirmar
         v-if="porAnular"
