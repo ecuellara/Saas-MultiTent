@@ -131,7 +131,7 @@ function pulsarZona(code: string): void {
 <template>
   <div class="flex w-full flex-col items-center gap-0.5">
     <svg
-      viewBox="0 0 100 114"
+      viewBox="14 2 72 110"
       class="h-auto w-full rounded-md border"
       :class="[
         seleccionado && !soloLectura ? 'border-primary ring-2 ring-primary' : 'border-line',
