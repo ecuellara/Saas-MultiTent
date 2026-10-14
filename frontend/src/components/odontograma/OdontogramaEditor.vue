@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import DienteFdi, { type PintadoDiente } from './DienteFdi.vue'
+import DienteSvg, { type PintadoDiente } from './DienteSvg.vue'
+import {
+  DECIDUOS_INF,
+  DECIDUOS_SUP,
+  PERMANENTES_INF,
+  PERMANENTES_SUP,
+  toothMeta,
+} from './teeth'
 import AvisoError from '../ui/AvisoError.vue'
 import CargandoBloque from '../ui/CargandoBloque.vue'
 import ModalConfirmar from '../ui/ModalConfirmar.vue'
@@ -47,23 +54,35 @@ const superficiesMarcadas = ref<string[]>([])
 const material = ref('')
 const porAnular = ref<OdontogramaHallazgo | null>(null)
 const confirmarFirma = ref(false)
+/** Dentición decidua oculta por defecto: el uso diario es la permanente. */
+const verDeciduos = ref(false)
 
-/** Arcada permanente, en el orden de lectura del gráfico. */
-function rango(ini: number, fin: number): string[] {
-  const out: string[] = []
-  const paso = ini <= fin ? 1 : -1
-  for (let n = ini; paso > 0 ? n <= fin : n >= fin; n += paso) out.push(String(n))
-  return out
+function nombrePieza(numero: string): string {
+  return toothMeta(numero).nombre
 }
-const SUPERIOR_A = rango(18, 11)
-const SUPERIOR_B = rango(21, 28)
-const INFERIOR_A = rango(48, 41)
-const INFERIOR_B = rango(31, 38)
 
-/** Cuadrantes 1 y 4 van a la izquierda del gráfico: mesial mira a la derecha. */
-function esEspejo(numero: string): boolean {
-  return numero.startsWith('1') || numero.startsWith('4')
-}
+const SUPERIOR_A = PERMANENTES_SUP.slice(0, 8)
+const SUPERIOR_B = PERMANENTES_SUP.slice(8)
+const INFERIOR_A = PERMANENTES_INF.slice(0, 8)
+const INFERIOR_B = PERMANENTES_INF.slice(8)
+const DECIDUOS_SUPERIOR_A = DECIDUOS_SUP.slice(0, 5)
+const DECIDUOS_SUPERIOR_B = DECIDUOS_SUP.slice(5)
+const DECIDUOS_INFERIOR_A = DECIDUOS_INF.slice(0, 5)
+const DECIDUOS_INFERIOR_B = DECIDUOS_INF.slice(5)
+
+/**
+ * Filas del gráfico en orden de lectura: permanentes superiores, deciduos
+ * superiores (opcionales), permanentes inferiores y deciduos inferiores
+ * (opcionales). Los deciduos van centrados, como en la norma.
+ */
+const arcadas = computed(() =>
+  [
+    { titulo: 'Permanentes superiores · 18–28', a: SUPERIOR_A, b: SUPERIOR_B, decidua: false },
+    { titulo: 'Deciduos superiores · 55–65', a: DECIDUOS_SUPERIOR_A, b: DECIDUOS_SUPERIOR_B, decidua: true },
+    { titulo: 'Permanentes inferiores · 48–38', a: INFERIOR_A, b: INFERIOR_B, decidua: false },
+    { titulo: 'Deciduos inferiores · 85–75', a: DECIDUOS_INFERIOR_A, b: DECIDUOS_INFERIOR_B, decidua: true },
+  ].filter((fila) => !fila.decidua || verDeciduos.value),
+)
 
 /** Nombre de color del catálogo → CSS (la norma usa rojo y azul). */
 const COLOR_CSS: Record<string, string> = { rojo: '#dc2626', azul: '#2563eb' }
@@ -102,6 +121,7 @@ const pintadosPorDiente = computed<Record<string, PintadoDiente[]>>(() => {
       colorCss: colorCss(entrada?.colorDefecto ?? h.color),
       abreviatura: entrada?.abreviatura ?? h.hallazgoCodigo.slice(0, 2),
       piezaCompleta: alcancePieza,
+      codigo: h.hallazgoCodigo,
     })
   }
   return mapa
@@ -295,68 +315,71 @@ async function confirmarFirmar(): Promise<void> {
       </p>
 
       <section aria-label="Arcadas">
-        <div class="space-y-4 overflow-x-auto rounded-lg border border-line bg-background p-4">
-          <div>
-            <p class="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Superior</p>
-            <div class="flex min-w-max items-start gap-1">
-              <DienteFdi
-                v-for="n in SUPERIOR_A"
-                :key="n"
-                :numero="n"
-                :marcadas="dienteObjetivo === n ? superficiesMarcadas : []"
-                :pintados="pintadosPorDiente[n] ?? []"
-                :seleccionado="dienteObjetivo === n"
-                :espejo="esEspejo(n)"
-                :solo-lectura="!editable"
-                @elegir="elegirDiente"
-                @update:marcadas="(m) => marcarDiente(n, m)"
-              />
-              <div class="mx-1 w-px self-stretch bg-line" title="Línea media" />
-              <DienteFdi
-                v-for="n in SUPERIOR_B"
-                :key="n"
-                :numero="n"
-                :marcadas="dienteObjetivo === n ? superficiesMarcadas : []"
-                :pintados="pintadosPorDiente[n] ?? []"
-                :seleccionado="dienteObjetivo === n"
-                :espejo="esEspejo(n)"
-                :solo-lectura="!editable"
-                @elegir="elegirDiente"
-                @update:marcadas="(m) => marcarDiente(n, m)"
-              />
+        <div class="space-y-3 overflow-x-auto rounded-[28px] border border-line bg-background p-4 shadow-sm">
+          <div class="min-w-max space-y-4">
+            <div v-for="fila in arcadas" :key="fila.titulo">
+              <p class="mb-1 text-xs font-semibold text-muted">{{ fila.titulo }}</p>
+              <div class="flex items-stretch gap-1.5">
+                <button
+                  v-for="n in fila.a"
+                  :key="n"
+                  type="button"
+                  :title="nombrePieza(n)"
+                  class="w-[64px] shrink-0 rounded-lg border transition sm:w-[78px]"
+                  :class="dienteObjetivo === n ? 'border-primary ring-2 ring-secondary/50' : 'border-transparent hover:border-secondary'"
+                  @click="elegirDiente(n)"
+                >
+                  <DienteSvg
+                    :numero="n"
+                    :marcadas="dienteObjetivo === n ? superficiesMarcadas : []"
+                    :pintados="pintadosPorDiente[n] ?? []"
+                    :seleccionado="dienteObjetivo === n"
+                    :solo-lectura="!editable"
+                    @elegir="elegirDiente"
+                    @update:marcadas="(m) => marcarDiente(n, m)"
+                  />
+                </button>
+                <div class="mx-1 w-px shrink-0 self-stretch bg-line" title="Línea media" />
+                <button
+                  v-for="n in fila.b"
+                  :key="n"
+                  type="button"
+                  :title="nombrePieza(n)"
+                  class="w-[64px] shrink-0 rounded-lg border transition sm:w-[78px]"
+                  :class="dienteObjetivo === n ? 'border-primary ring-2 ring-secondary/50' : 'border-transparent hover:border-secondary'"
+                  @click="elegirDiente(n)"
+                >
+                  <DienteSvg
+                    :numero="n"
+                    :marcadas="dienteObjetivo === n ? superficiesMarcadas : []"
+                    :pintados="pintadosPorDiente[n] ?? []"
+                    :seleccionado="dienteObjetivo === n"
+                    :solo-lectura="!editable"
+                    @elegir="elegirDiente"
+                    @update:marcadas="(m) => marcarDiente(n, m)"
+                  />
+                </button>
+              </div>
             </div>
           </div>
-          <div>
-            <p class="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Inferior</p>
-            <div class="flex min-w-max items-start gap-1">
-              <DienteFdi
-                v-for="n in INFERIOR_A"
-                :key="n"
-                :numero="n"
-                :marcadas="dienteObjetivo === n ? superficiesMarcadas : []"
-                :pintados="pintadosPorDiente[n] ?? []"
-                :seleccionado="dienteObjetivo === n"
-                :espejo="esEspejo(n)"
-                invertido
-                :solo-lectura="!editable"
-                @elegir="elegirDiente"
-                @update:marcadas="(m) => marcarDiente(n, m)"
-              />
-              <div class="mx-1 w-px self-stretch bg-line" title="Línea media" />
-              <DienteFdi
-                v-for="n in INFERIOR_B"
-                :key="n"
-                :numero="n"
-                :marcadas="dienteObjetivo === n ? superficiesMarcadas : []"
-                :pintados="pintadosPorDiente[n] ?? []"
-                :seleccionado="dienteObjetivo === n"
-                :espejo="esEspejo(n)"
-                invertido
-                :solo-lectura="!editable"
-                @elegir="elegirDiente"
-                @update:marcadas="(m) => marcarDiente(n, m)"
-              />
-            </div>
+
+          <button
+            type="button"
+            class="text-xs font-semibold text-primary underline"
+            @click="verDeciduos = !verDeciduos"
+          >
+            {{ verDeciduos ? 'Ocultar dentición decidua' : 'Mostrar dentición decidua' }}
+          </button>
+
+          <div class="flex flex-wrap items-center gap-3 border-t border-line pt-3 text-[11px] text-muted">
+            <span class="inline-flex items-center gap-1">
+              <span class="h-2.5 w-2.5 rounded-full bg-[#2563eb]" />
+              Azul: buen estado / tratamiento en buen estado
+            </span>
+            <span class="inline-flex items-center gap-1">
+              <span class="h-2.5 w-2.5 rounded-full bg-[#dc2626]" />
+              Rojo: patológico / mal estado / temporal
+            </span>
           </div>
         </div>
       </section>
