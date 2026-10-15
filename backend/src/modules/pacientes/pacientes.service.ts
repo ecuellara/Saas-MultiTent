@@ -11,6 +11,7 @@ type Db = {
     create: (a: unknown) => Promise<Record<string, unknown>>;
     update: (a: unknown) => Promise<Record<string, unknown>>;
   };
+  ubigeo: { findUnique: (a: unknown) => Promise<{ codigo: string } | null> };
   historialClinico: { findMany: (a: unknown) => Promise<unknown> };
   documentoPaciente: {
     findMany: (a: unknown) => Promise<unknown>;
@@ -108,12 +109,25 @@ export class PacientesService {
     if (typeof salida.fechaNac === 'string' && salida.fechaNac.length > 0) {
       salida.fechaNac = new Date(salida.fechaNac);
     }
-    return salida;
+    return this.normalizarUbigeo(salida);
+  }
+
+  /**
+   * El formulario envía el ubigeo como texto libre: se recorta y el vacío se
+   * vuelve null (una cadena vacía también violaría la FK con el genérico P2003).
+   */
+  private normalizarUbigeo(dto: Record<string, unknown>): Record<string, unknown> {
+    if (typeof dto.ubigeoCodigo === 'string') {
+      const codigo = dto.ubigeoCodigo.trim();
+      return { ...dto, ubigeoCodigo: codigo === '' ? null : codigo };
+    }
+    return dto;
   }
 
   async crear(dto: Record<string, unknown>): Promise<Record<string, unknown>> {
     const ctx = requireTenant();
     const { tenantId: _ignored, ...resto } = dto;
+    await this.validarUbigeo(resto.ubigeoCodigo);
     return this.db.paciente.create({
       data: { ...this.normalizarFechas(resto), tenantId: ctx.tenantId },
     });
@@ -122,7 +136,26 @@ export class PacientesService {
   async actualizar(id: string, dto: Record<string, unknown>): Promise<Record<string, unknown>> {
     await this.obtener(id);
     const { tenantId: _ignored, ...resto } = dto;
+    // Solo se valida si la clave VIENE en el cuerpo: un PATCH parcial que no
+    // toca el ubigeo no debe fallar por un valor antiguo.
+    if ('ubigeoCodigo' in resto) await this.validarUbigeo(resto.ubigeoCodigo);
     return this.db.paciente.update({ where: { id }, data: this.normalizarFechas(resto) });
+  }
+
+  /**
+   * `ubigeoCodigo` es FK a `Ubigeo`, pero el formulario lo envía como texto
+   * libre y el catálogo está VACÍO: sin esta comprobación, Prisma responde
+   * P2003 y el filtro global devuelve «Referencia inválida» sin explicar nada.
+   * Se valida ANTES de escribir: código ausente en el catálogo → 400 claro.
+   * Vacío/null se acepta (el campo es opcional).
+   */
+  private async validarUbigeo(codigo: unknown): Promise<void> {
+    if (codigo === undefined || codigo === null) return;
+    if (typeof codigo !== 'string' || codigo.trim() === '') return;
+    const existe = await this.db.ubigeo.findUnique({ where: { codigo: codigo.trim() } });
+    if (!existe) {
+      throw new BadRequestException('El código de ubigeo no existe en el catálogo');
+    }
   }
 
   async eliminar(id: string): Promise<{ id: string }> {

@@ -205,6 +205,13 @@ describe('Aceptación del alta: el primer día del primer cliente', () => {
     const pacientes = await http().get('/api/pacientes').set(HD).expect(200);
     const cuerpo = Array.isArray(pacientes.body) ? pacientes.body : pacientes.body?.data;
     expect(cuerpo).toHaveLength(0);
+
+    // El alta siembra las plantillas de WhatsApp por defecto (no vacías).
+    const wa = await http().get('/api/plantillas-whatsapp').set(HD).expect(200);
+    expect(wa.body.plantillas).toHaveLength(3);
+    expect(
+      wa.body.plantillas.every((p: { activo: boolean; texto: string }) => p.activo && p.texto.includes('{{paciente}}')),
+    ).toBe(true);
   });
 
   // ------------------------------------ 3. primer arranque: agenda permisiva

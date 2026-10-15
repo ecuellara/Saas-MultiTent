@@ -19,6 +19,7 @@ import { useSessionStore } from '../stores/session'
 import { Cog6ToothIcon } from '@heroicons/vue/24/outline'
 import ModuloHero from '../components/ui/ModuloHero.vue'
 import SeccionCalendario from '../components/configuracion/SeccionCalendario.vue'
+import SeccionPlantillas from '../components/configuracion/SeccionPlantillas.vue'
 
 const sesion = useSessionStore()
 const ruta = useRoute()
@@ -310,6 +311,7 @@ const campo = 'w-full rounded-xl border border-line bg-background-soft/60 px-3 p
       <!-- Fuera del fieldset a propósito: los feeds se gestionan con permiso de
         agenda (`appointments.write`), no con el de gestión de la clínica. -->
       <SeccionCalendario class="mt-4" />
+      <SeccionPlantillas class="mt-4" />
     </template>
   </div>
 </template>

@@ -2,11 +2,11 @@
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { CalendarDaysIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/vue/24/outline'
 import { hoyLima } from '../../services/fechas'
-import { diaFueraDeRango, fechaCalendario, mesFueraDeRango, siguienteNivel, type NivelCalendario } from '../../services/calendario'
+import { diaFueraDeRango, fechaCalendario, fechaDeApertura, mesFueraDeRango, nivelDeApertura, siguienteNivel, type NivelCalendario, type NivelInicial } from '../../services/calendario'
 
 const props = withDefaults(
-  defineProps<{ modelValue?: string | null; max?: string; min?: string; id?: string; disabled?: boolean; ariaLabel?: string }>(),
-  { modelValue: '', max: '2100-12-31', min: '1900-01-01', id: 'fecha', disabled: false, ariaLabel: 'Seleccionar fecha' },
+  defineProps<{ modelValue?: string | null; max?: string; min?: string; id?: string; disabled?: boolean; ariaLabel?: string; nivelInicial?: NivelInicial }>(),
+  { modelValue: '', max: '2100-12-31', min: '1900-01-01', id: 'fecha', disabled: false, ariaLabel: 'Seleccionar fecha', nivelInicial: 'dias' },
 )
 const emit = defineEmits<{ 'update:modelValue': [string] }>()
 const valor = computed(() => props.modelValue ?? '')
@@ -23,7 +23,7 @@ const fmt = fechaCalendario
 const maxDia = computed(() => props.max)
 const abierto = ref(false)
 const vista = ref({ y: 2000, m: 1 })
-const nivel = ref<NivelCalendario>('anios')
+const nivel = ref<NivelCalendario>(props.nivelInicial)
 const raiz = ref<HTMLElement | null>(null)
 const panel = ref({ top: 0, left: 0, width: 288 })
 
@@ -43,9 +43,12 @@ function actualizarPosicion(): void {
   }
 }
 function abrir(): void {
-  const p = partes(valor.value) ?? partes(maxDia.value)!
+  // Sin valor se cae en HOY (no en el máximo): un campo vacío con el máximo
+  // por defecto abría el panel en el año 2100.
+  const base = fechaDeApertura(valor.value, hoyLima(), maxDia.value)
+  const p = partes(base) ?? partes(maxDia.value)!
   vista.value = { y: p.y, m: p.m }
-  nivel.value = 'anios'
+  nivel.value = nivelDeApertura(props.nivelInicial)
   abierto.value = true
   void nextTick(actualizarPosicion)
 }

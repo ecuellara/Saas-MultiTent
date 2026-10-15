@@ -19,6 +19,32 @@ import { CATALOGO_HALLAZGOS } from '../src/core/catalogo/hallazgos.js';
 import type { PrismaClient } from '@prisma/client';
 
 /**
+ * Catálogo único de plantillas de notificación (WhatsApp manual).
+ * Misma razón que los permisos: la fuente vive en `src/core/catalogo` y los
+ * scripts la importan desde aquí, sin copias.
+ */
+export { CATALOGO_PLANTILLAS } from '../src/core/catalogo/plantillas.js';
+import { CATALOGO_PLANTILLAS } from '../src/core/catalogo/plantillas.js';
+
+/**
+ * Siembra las plantillas por defecto de una clínica (idempotente, upsert por
+ * `[tenantId, clave]`). No pisa personalizaciones: solo crea las que faltan y
+ * deja el texto editado tal cual.
+ */
+export async function sembrarPlantillas(prisma: PrismaClient, tenantId: string): Promise<number> {
+  let creadas = 0;
+  for (const c of CATALOGO_PLANTILLAS) {
+    const r = await prisma.plantillaWhatsApp.upsert({
+      where: { tenantId_clave: { tenantId, clave: c.clave } },
+      update: {},
+      create: { tenantId, clave: c.clave, texto: c.texto, activo: true },
+    });
+    void r;
+    creadas++;
+  }
+  return creadas;
+}
+/**
  * Siembra el catálogo NTS 188 de forma idempotente (upsert por `codigo`).
  *
  * La usan `db:seed`, `db:seed-demo` y la prueba de idempotencia: el MISMO

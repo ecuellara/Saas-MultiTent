@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  arcadas,
   DECIDUOS_INF,
   DECIDUOS_SUP,
   PERMANENTES_INF,
@@ -38,4 +39,26 @@ test('toothMeta deriva tipo, arcada, superficie oclusal/incisal y palatina/lingu
   assert.equal(toothMeta('53').tipo, 'canino')
   assert.equal(toothMeta('85').tipo, 'molar')
   assert.equal(toothMeta('45').tipo, 'premolar') // permanente: aquí sí hay premolar
+})
+
+test('con deciduos visibles el orden es: perm sup, decid sup, decid inf, perm inf', () => {
+  const titulos = arcadas(true).map((f) => f.titulo)
+  assert.deepEqual(titulos, [
+    'Permanentes superiores · 18–28',
+    'Deciduos superiores · 55–65',
+    'Deciduos inferiores · 85–75',
+    'Permanentes inferiores · 48–38',
+  ])
+  // El 85–75 queda justo debajo de los deciduos superiores, no al final.
+  const piezas = arcadas(true).map((f) => [...f.a, ...f.b])
+  assert.deepEqual(piezas[2].slice(0, 3), ['85', '84', '83'])
+  assert.ok(piezas[2].includes('75'))
+})
+
+test('con deciduos ocultos solo quedan las dos filas permanentes', () => {
+  const filas = arcadas(false)
+  assert.deepEqual(
+    filas.map((f) => f.titulo),
+    ['Permanentes superiores · 18–28', 'Permanentes inferiores · 48–38'],
+  )
 })

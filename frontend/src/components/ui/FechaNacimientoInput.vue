@@ -7,6 +7,6 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>()
 </script>
 
 <template>
-  <FechaInput :id="id" :model-value="modelValue" min="1900-01-01" :max="hoyLima()"
+  <FechaInput :id="id" :model-value="modelValue" min="1900-01-01" :max="hoyLima()" nivel-inicial="anios"
     aria-label="Seleccionar fecha de nacimiento" @update:model-value="emit('update:modelValue', $event)" />
 </template>

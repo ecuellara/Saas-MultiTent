@@ -1,16 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import {
-  listarMiembros,
-  listarSedes,
-  listarTratamientos,
-  type Miembro,
-  type Sede,
-  type Tratamiento,
-} from '../../services/catalogos'
-import { crearCita, type Cita } from '../../services/citas'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { listarMiembros, listarSedes, listarTratamientos, type Miembro, type Sede, type Tratamiento } from '../../services/catalogos'
+import { crearCita, obtenerDisponibilidad, type Cita, type HuecoDisponibilidad } from '../../services/citas'
 import { mensajeDeError } from '../../services/errores'
-import { deInputFecha, hoyLocal, sumarMinutos } from '../../services/fechas'
+import { deInputFecha, hora12, hoyLocal, sumarMinutos } from '../../services/fechas'
 import { listarPacientes, type Paciente } from '../../services/pacientes'
 import { useSessionStore } from '../../stores/session'
 import AvisoError from '../ui/AvisoError.vue'
@@ -66,6 +59,7 @@ onMounted(async () => {
     sedes.value = s
     // Sede por defecto: la del usuario, o la principal.
     form.sedeId = sesion.activa?.sedeId ?? s.find((x) => x.esPrincipal)?.id ?? s[0]?.id ?? ''
+    void cargarHuecos()
     if (puedeVerEquipo.value) {
       // El backend responde 403 si no hay permiso: se degrada sin ruido.
       miembros.value = await listarMiembros().catch(() => [])
@@ -118,6 +112,69 @@ function alCambiarInicio(): void {
   const [h2, m2] = form.horaFin.split(':').map(Number)
   const duracion = h2 * 60 + m2 - (h1 * 60 + m1)
   form.horaFin = sumarMinutos(form.horaInicio, duracion > 0 ? duracion : 30)
+}
+
+/**
+ * «Inicio» con las MISMAS reglas que el guardado (T5): el selector ofrece la
+ * rejilla de 15 minutos del backend con su motivo cuando no está libre. «Fin»
+ * sigue calculándose con la duración del tratamiento y sigue siendo ajustable.
+ */
+const huecos = ref<HuecoDisponibilidad[]>([])
+const cargandoHuecos = ref(false)
+
+const duracionActual = computed(() => {
+  const t = tratamientos.value.find((x) => x.id === form.tratamientoId)
+  if (t) return t.duracionMin
+  const [h1, m1] = form.horaInicio.split(':').map(Number)
+  const [h2, m2] = form.horaFin.split(':').map(Number)
+  const d = h2 * 60 + m2 - (h1 * 60 + m1)
+  return d > 0 ? d : 30
+})
+
+async function cargarHuecos(): Promise<void> {
+  if (!form.fecha) return
+  cargandoHuecos.value = true
+  try {
+    huecos.value = await obtenerDisponibilidad(
+      form.fecha,
+      duracionActual.value,
+      form.sedeId || null,
+      form.dentistaId || null,
+    )
+  } catch {
+    // Sin rejilla no se bloquea el formulario: el backend valida al guardar.
+    huecos.value = []
+  } finally {
+    cargandoHuecos.value = false
+  }
+}
+
+watch(
+  () => [form.fecha, form.sedeId, form.dentistaId, duracionActual.value],
+  () => void cargarHuecos(),
+)
+
+const opcionesInicio = computed(() => {
+  const lista = huecos.value.map((h) => ({
+    valor: h.horaInicio,
+    etiqueta: h.disponible ? hora12(h.horaInicio) : `${hora12(h.horaInicio)} — ${h.motivo}`,
+    deshabilitado: !h.disponible,
+  }))
+  // La hora elegida siempre se puede ver (aunque la rejilla diga que no está
+  // libre: el backend tiene la última palabra al guardar).
+  if (form.horaInicio && !lista.some((o) => o.valor === form.horaInicio)) {
+    lista.unshift({
+      valor: form.horaInicio,
+      etiqueta: `${hora12(form.horaInicio)} (actual)`,
+      deshabilitado: false,
+    })
+  }
+  return lista
+})
+
+function motivoHoraActual(): string {
+  const h = huecos.value.find((x) => x.horaInicio === form.horaInicio)
+  return h && !h.disponible ? `Esa hora no está libre: ${h.motivo}.` : ''
 }
 
 async function guardar(): Promise<void> {
@@ -188,13 +245,26 @@ async function guardar(): Promise<void> {
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="mb-1 block text-xs font-medium text-ink" for="cita-inicio">Inicio</label>
-          <input
+          <select
             id="cita-inicio"
             v-model="form.horaInicio"
-            type="time"
             class="w-full rounded-md border border-line bg-background-soft px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
             @change="alCambiarInicio"
-          />
+          >
+            <option v-if="cargandoHuecos" value="">Cargando horas…</option>
+            <option
+              v-for="o in opcionesInicio"
+              :key="o.valor"
+              :value="o.valor"
+              :disabled="o.deshabilitado"
+            >
+              {{ o.etiqueta }}
+            </option>
+          </select>
+          <p v-if="motivoHoraActual()" class="mt-1 text-xs text-warning">{{ motivoHoraActual() }}</p>
+          <p v-else-if="!cargandoHuecos && huecos.length === 0" class="mt-1 text-xs text-muted">
+            Sin rejilla de horarios: el servidor valida al guardar.
+          </p>
         </div>
         <div>
           <label class="mb-1 block text-xs font-medium text-ink" for="cita-fin">Fin</label>

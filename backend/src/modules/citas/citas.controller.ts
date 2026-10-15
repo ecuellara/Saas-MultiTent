@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
-import { CreateCitaDto, UpdateCitaDto } from './citas.dto.js';
+import { CreateCitaDto, DisponibilidadQuery, ListarCitasQuery, UpdateCitaDto } from './citas.dto.js';
 import { CitasService } from './citas.service.js';
 
 @ApiTags('citas')
@@ -11,8 +11,18 @@ export class CitasController {
 
   @Get()
   @RequirePermission('appointments.read')
-  listar(@Query('fecha') fecha?: string): Promise<unknown> {
-    return this.service.listar(fecha);
+  listar(@Query() q: ListarCitasQuery): Promise<unknown> {
+    return this.service.listar(q);
+  }
+
+  /**
+   * Rejilla de disponibilidad (pasos de 15 minutos). Va ANTES de `:id`: si no,
+   * `disponibilidad` caería en `obtener` y devolvería 404.
+   */
+  @Get('disponibilidad')
+  @RequirePermission('appointments.read')
+  disponibilidad(@Query() q: DisponibilidadQuery): Promise<unknown> {
+    return this.service.disponibilidad(q);
   }
 
   @Post()

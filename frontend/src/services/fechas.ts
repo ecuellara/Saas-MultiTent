@@ -128,3 +128,30 @@ export function sumarMinutos(hora: string, minutos: number): string {
   const total = (h * 60 + m + minutos + 1440) % 1440
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }
+
+/** Día de la semana de una fecha civil (`0` = domingo … `6` = sábado), en UTC. */
+export function diaSemanaCivil(fecha: string): number {
+  return new Date(`${fecha}T00:00:00.000Z`).getUTCDay()
+}
+
+/** Lunes (civil) de la semana que contiene la fecha dada. */
+export function inicioSemana(fecha: string): string {
+  return sumarDias(fecha, -((diaSemanaCivil(fecha) + 6) % 7))
+}
+
+/** Los 7 días civiles (lunes → domingo) de la semana que contiene la fecha. */
+export function diasSemana(fecha: string): string[] {
+  const lunes = inicioSemana(fecha)
+  return Array.from({ length: 7 }, (_, i) => sumarDias(lunes, i))
+}
+
+/** Primer día civil del mes que contiene la fecha dada. */
+export function inicioMes(fecha: string): string {
+  return fecha.slice(0, 7) + '-01'
+}
+
+/** Último día civil del mes que contiene la fecha dada. */
+export function finMes(fecha: string): string {
+  const [y, m] = fecha.split('-').map(Number)
+  return `${y}-${String(m).padStart(2, '0')}-${new Date(Date.UTC(y, m, 0)).getUTCDate()}`
+}

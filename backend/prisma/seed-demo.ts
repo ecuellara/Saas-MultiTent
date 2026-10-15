@@ -29,7 +29,7 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { CATALOGO_PERMISOS, sembrarCatalogoHallazgos } from './seed-data.js';
+import { CATALOGO_PERMISOS, sembrarCatalogoHallazgos, sembrarPlantillas } from './seed-data.js';
 
 const SLUG = 'demo';
 
@@ -236,6 +236,10 @@ async function main(): Promise<void> {
         periodoFin: enUnMes,
       },
     });
+
+    // ---- Plantillas de notificación por defecto --------------------------------
+    const nPlantillas = await sembrarPlantillas(prisma, tenant.id);
+    console.log(`Plantillas de WhatsApp: ${nPlantillas} entradas`);
 
     // ---- Datos de ejemplo ----------------------------------------------------
     for (const p of PACIENTES_DEMO) {

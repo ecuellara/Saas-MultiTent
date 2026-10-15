@@ -196,3 +196,13 @@ export async function descargarDocumento(
 export function esImagen(mimeType: string): boolean {
   return mimeType === 'image/png' || mimeType === 'image/jpeg'
 }
+
+/**
+ * Estado del catálogo de ubigeos (vacío en producción: la carga de datos está
+ * pendiente). El formulario de paciente lo consulta para no ofrecer un campo
+ * libre que el guardado rechazaría.
+ */
+export async function obtenerEstadoUbigeo(): Promise<{ total: number }> {
+  const { data } = await api.get<{ total: number }>('/ubigeos/estado')
+  return data
+}

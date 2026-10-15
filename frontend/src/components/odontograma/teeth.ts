@@ -88,3 +88,31 @@ export const PERMANENTES_SUP = ['18', '17', '16', '15', '14', '13', '12', '11', 
 export const PERMANENTES_INF = ['48', '47', '46', '45', '44', '43', '42', '41', '31', '32', '33', '34', '35', '36', '37', '38'];
 export const DECIDUOS_SUP = ['55', '54', '53', '52', '51', '61', '62', '63', '64', '65'];
 export const DECIDUOS_INF = ['85', '84', '83', '82', '81', '71', '72', '73', '74', '75'];
+
+export interface FilaArcada {
+  titulo: string;
+  /** Lado derecho del dibujo (cuadrantes 1/4/5/8). */
+  a: string[];
+  /** Lado izquierdo del dibujo (cuadrantes 2/3/6/7). */
+  b: string[];
+  decidua: boolean;
+}
+
+/**
+ * Filas del gráfico en orden de lectura: permanentes superiores, deciduos
+ * superiores, deciduos inferiores y permanentes inferiores. Los deciduos
+ * inferiores van JUSTO debajo de los superiores (no al final): con el orden
+ * anterior (permanentes abajo y deciduos al final) el 85–75 quedaba debajo de
+ * los permanentes inferiores. Los deciduos van centrados, como en la norma.
+ *
+ * Función pura (fuera del `.vue`) para poder probar el ORDEN: el test del SVG
+ * mira el texto del fichero y no detecta un orden equivocado.
+ */
+export function arcadas(verDeciduos: boolean): FilaArcada[] {
+  return [
+    { titulo: 'Permanentes superiores · 18–28', a: PERMANENTES_SUP.slice(0, 8), b: PERMANENTES_SUP.slice(8), decidua: false },
+    { titulo: 'Deciduos superiores · 55–65', a: DECIDUOS_SUP.slice(0, 5), b: DECIDUOS_SUP.slice(5), decidua: true },
+    { titulo: 'Deciduos inferiores · 85–75', a: DECIDUOS_INF.slice(0, 5), b: DECIDUOS_INF.slice(5), decidua: true },
+    { titulo: 'Permanentes inferiores · 48–38', a: PERMANENTES_INF.slice(0, 8), b: PERMANENTES_INF.slice(8), decidua: false },
+  ].filter((fila) => !fila.decidua || verDeciduos);
+}

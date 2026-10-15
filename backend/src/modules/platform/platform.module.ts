@@ -19,6 +19,7 @@ import { EntitlementsService } from '../../core/entitlements/entitlements.servic
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { LoginDto } from '../auth/login.dto.js';
 import { CATALOGO_PERMISOS } from '../../core/catalogo/permisos.js';
+import { CATALOGO_PLANTILLAS } from '../../core/catalogo/plantillas.js';
 import { CATALOGO_EJEMPLO_TRATAMIENTOS } from '../../core/catalogo/ejemplo.js';
 import {
   CookieSpec,
@@ -609,6 +610,7 @@ export class PlatformService {
           rolePermission: { createMany: (a: unknown) => Promise<unknown> };
           user: { create: (a: unknown) => Promise<{ id: string; email: string }> };
           membership: { create: (a: unknown) => Promise<unknown> };
+          plantillaWhatsApp: { createMany: (a: unknown) => Promise<unknown> };
           subscription: { create: (a: unknown) => Promise<unknown> };
         };
         const tenant = await t.tenant.create({
@@ -650,6 +652,16 @@ export class PlatformService {
         });
         await t.membership.create({
           data: { tenantId: tenant.id, userId: owner.id, roleId: role.id, sedeId: sede.id },
+        });
+        // Plantillas de notificación por defecto (la clínica las personaliza
+        // en Configuración; sin ellas la pantalla saldría vacía).
+        await t.plantillaWhatsApp.createMany({
+          data: CATALOGO_PLANTILLAS.map((c) => ({
+            tenantId: tenant.id,
+            clave: c.clave,
+            texto: c.texto,
+            activo: true,
+          })),
         });
         await t.subscription.create({
           data: {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { diaFueraDeRango, fechaCalendario, mesFueraDeRango, siguienteNivel } from '../src/services/calendario.ts'
+import { diaFueraDeRango, fechaCalendario, fechaDeApertura, mesFueraDeRango, nivelDeApertura, siguienteNivel } from '../src/services/calendario.ts'
 
 test('el selector obliga el flujo año → mes → día', () => {
   assert.equal(siguienteNivel('anios'), 'meses')
@@ -8,6 +8,21 @@ test('el selector obliga el flujo año → mes → día', () => {
   assert.notEqual(siguienteNivel('anios'), 'dias')
 })
 
+test('el nivel de apertura es configurable: día por defecto, año para nacimiento', () => {
+  assert.equal(nivelDeApertura('dias'), 'dias')
+  assert.equal(nivelDeApertura('anios'), 'anios')
+})
+
+test('sin valor el selector cae en hoy, no en el máximo (bug del año 2100)', () => {
+  assert.equal(fechaDeApertura('', '2026-10-15', '2100-12-31'), '2026-10-15')
+  assert.equal(fechaDeApertura(null, '2026-10-15', '2100-12-31'), '2026-10-15')
+  assert.equal(fechaDeApertura('  ', '2026-10-15', '2100-12-31'), '2026-10-15')
+})
+
+test('con valor se respeta, y si hoy excede el máximo se usa el máximo', () => {
+  assert.equal(fechaDeApertura('2026-03-10', '2026-10-15', '2100-12-31'), '2026-03-10')
+  assert.equal(fechaDeApertura('', '2026-10-15', '2026-01-01'), '2026-01-01')
+})
 test('los nombres de los doce meses caben en una grilla de ancho mínimo independiente del campo', () => {
   const anchoPanel = 240
   const columnas = 3

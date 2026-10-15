@@ -82,9 +82,55 @@ export function claseEstado(estado: string): string {
   return ESTADOS_CITA.find((e) => e.valor === estado)?.clase ?? 'bg-background-soft text-muted'
 }
 
-/** Citas de un día (`aaaa-mm-dd`); sin fecha, devuelve todas. */
+/** Citas de un día (`aaaa-mm-dd`); sin fecha, devuelve todas (comportamiento actual). */
 export async function listarCitas(fecha?: string): Promise<Cita[]> {
   const { data } = await api.get<Cita[]>('/citas', { params: fecha ? { fecha } : {} })
+  return data
+}
+
+export interface FiltroCitas {
+  /** Día exacto (`aaaa-mm-dd`). Excluyente con `desde`/`hasta`. */
+  fecha?: string
+  /** Rango (`aaaa-mm-dd`), máximo 62 días. */
+  desde?: string
+  hasta?: string
+  sedeId?: string
+  dentistaId?: string
+  estado?: string
+}
+
+/** Citas por rango y alcances (vista de semana/mes de la agenda). */
+export async function listarCitasRango(filtro: FiltroCitas): Promise<Cita[]> {
+  const params: Record<string, string> = {}
+  for (const [k, v] of Object.entries(filtro)) if (v) params[k] = v
+  const { data } = await api.get<Cita[]>('/citas', { params })
+  return data
+}
+
+export interface HuecoDisponibilidad {
+  horaInicio: string
+  disponible: boolean
+  motivo?: 'pasado' | 'fuera de horario' | 'descanso' | 'ocupado'
+}
+
+/**
+ * Rejilla de disponibilidad de un día (pasos de 15 minutos) con el motivo
+ * cuando no está libre. Usa las MISMAS reglas que el guardado.
+ */
+export async function obtenerDisponibilidad(
+  fecha: string,
+  duracion: number,
+  sedeId?: string | null,
+  dentistaId?: string | null,
+): Promise<HuecoDisponibilidad[]> {
+  const { data } = await api.get<HuecoDisponibilidad[]>('/citas/disponibilidad', {
+    params: {
+      fecha,
+      duracion,
+      ...(sedeId ? { sedeId } : {}),
+      ...(dentistaId ? { dentistaId } : {}),
+    },
+  })
   return data
 }
 

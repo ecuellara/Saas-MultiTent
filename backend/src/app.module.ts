@@ -26,11 +26,13 @@ import { MembershipsModule } from './modules/memberships/memberships.module.js';
 import { PacientesModule } from './modules/pacientes/pacientes.module.js';
 import { PagosModule } from './modules/pagos/pagos.module.js';
 import { PlatformModule } from './modules/platform/platform.module.js';
+import { PlantillasModule } from './modules/plantillas/plantillas.module.js';
 import { ProveedoresModule } from './modules/proveedores/proveedores.module.js';
 import { RolesModule } from './modules/roles/roles.module.js';
 import { SedesModule } from './modules/sedes/sedes.module.js';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module.js';
 import { TratamientosModule } from './modules/tratamientos/tratamientos.module.js';
+import { UbigeoModule } from './modules/ubigeo/ubigeo.module.js';
 import { UsuariosModule } from './modules/usuarios/usuarios.module.js';
 
 @Module({
@@ -54,8 +56,10 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module.js';
     HealthModule,
     MembershipsModule,
     PlatformModule,
+    PlantillasModule,
     RolesModule,
     SedesModule,
+    UbigeoModule,
     UsuariosModule,
     SubscriptionsModule,
   ],

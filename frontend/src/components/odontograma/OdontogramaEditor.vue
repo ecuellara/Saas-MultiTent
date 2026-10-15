@@ -2,10 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import DienteSvg, { type PintadoDiente } from './DienteSvg.vue'
 import {
-  DECIDUOS_INF,
-  DECIDUOS_SUP,
-  PERMANENTES_INF,
-  PERMANENTES_SUP,
+  arcadas as filasArcadas,
   toothMeta,
 } from './teeth'
 import AvisoError from '../ui/AvisoError.vue'
@@ -61,28 +58,8 @@ function nombrePieza(numero: string): string {
   return toothMeta(numero).nombre
 }
 
-const SUPERIOR_A = PERMANENTES_SUP.slice(0, 8)
-const SUPERIOR_B = PERMANENTES_SUP.slice(8)
-const INFERIOR_A = PERMANENTES_INF.slice(0, 8)
-const INFERIOR_B = PERMANENTES_INF.slice(8)
-const DECIDUOS_SUPERIOR_A = DECIDUOS_SUP.slice(0, 5)
-const DECIDUOS_SUPERIOR_B = DECIDUOS_SUP.slice(5)
-const DECIDUOS_INFERIOR_A = DECIDUOS_INF.slice(0, 5)
-const DECIDUOS_INFERIOR_B = DECIDUOS_INF.slice(5)
-
-/**
- * Filas del gráfico en orden de lectura: permanentes superiores, deciduos
- * superiores (opcionales), permanentes inferiores y deciduos inferiores
- * (opcionales). Los deciduos van centrados, como en la norma.
- */
-const arcadas = computed(() =>
-  [
-    { titulo: 'Permanentes superiores · 18–28', a: SUPERIOR_A, b: SUPERIOR_B, decidua: false },
-    { titulo: 'Deciduos superiores · 55–65', a: DECIDUOS_SUPERIOR_A, b: DECIDUOS_SUPERIOR_B, decidua: true },
-    { titulo: 'Permanentes inferiores · 48–38', a: INFERIOR_A, b: INFERIOR_B, decidua: false },
-    { titulo: 'Deciduos inferiores · 85–75', a: DECIDUOS_INFERIOR_A, b: DECIDUOS_INFERIOR_B, decidua: true },
-  ].filter((fila) => !fila.decidua || verDeciduos.value),
-)
+/** Filas del gráfico en orden de lectura (definición pura en `teeth.ts`). */
+const arcadas = computed(() => filasArcadas(verDeciduos.value))
 
 /** Nombre de color del catálogo → CSS (la norma usa rojo y azul). */
 const COLOR_CSS: Record<string, string> = { rojo: '#dc2626', azul: '#2563eb' }
