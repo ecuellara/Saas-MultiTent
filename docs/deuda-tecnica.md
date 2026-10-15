@@ -444,7 +444,20 @@ Falta conciliar contra nuestro registro:
 | 15 | **Sin canal real de alertas.** Los timers systemd avisan al journal (`OnFailure` + `dental-saas-aviso@.service`) y hay gancho para `/etc/dental-saas/avisos.sh`, pero ningún correo/webhook configurado | Conectar el gancho al canal del equipo (y el timer de vigilancia ya sale != 0 si algo va mal) | Antes del primer despliegue con datos reales |
 | 16 | **Secretos en ficheros `.env`, sin gestor.** Rotación manual; si un secreto llega a git, hay que rotarlo (revertir no basta) | Gestor de secretos o variables del orquestador cuando haya más de un servidor | Al salir del servidor único |
 | 17 | **No hay procedimiento de incidentes.** La documentación cubre arquitectura, despliegue, respaldos, pruebas y primeros pasos, pero no **qué hacer cuando algo falla en producción**: por dónde empezar, qué mirar (vigilancia, logs, auditoría), cómo restaurar y a quién avisar | Se escribe mucho mejor con el servidor delante —o tras el primer incidente real— que en abstracto; hoy la vigilancia ya dice qué está mal, pero no qué hacer | Al montar el servidor de producción, antes del primer cliente |
-| 18 | **Catálogo de ubigeos del Perú vacío (0 filas).** `Paciente.ubigeoCodigo` es FK a `Ubigeo`; el guardado valida el código con un 400 claro («El código de ubigeo no existe en el catálogo») y el formulario deshabilita el campo con el motivo mientras no haya datos | Cargar el catálogo es una tarea de DATOS aparte: no se inventan ni se generan códigos; falta que el dueño apruebe la fuente oficial (INEI). Cuando se cargue, el campo pasará a ser selector de departamento/provincia/distrito | Aprobación de la fuente + carga inicial (ver `GET /api/ubigeos/estado`) |
+
+> **Retirado (2026-10-14): el ubigeo del paciente.** Aquí figuraba la deuda 18 («catálogo
+> de ubigeos vacío»). Se cierra **retirando la funcionalidad, no cargando datos**:
+> `Paciente.ubigeoCodigo` era una columna heredada del DDL del proyecto antiguo, el
+> catálogo nunca se cargó y **nada lo leía** (ni el consentimiento, ni los informes, ni
+> ninguna exportación). Como el formulario lo enviaba como texto libre contra una clave
+> foránea, cualquier código producía P2003 → «Referencia inválida» al guardar: el mismo
+> error que ya ocurría en el sistema antiguo, donde lo resolvían excluyendo el campo del
+> payload.
+>
+> Se eliminó la columna, su clave foránea, el módulo `ubigeo` y su campo en el formulario
+> (migración `8_quitar_ubigeo_paciente`). **La tabla `Ubigeo` se conserva** —catálogo
+> oficial del Perú, sin filas— por si algún día se quiere un selector de
+> departamento/provincia/distrito: usarla no requeriría ninguna migración.
 
 ---
 

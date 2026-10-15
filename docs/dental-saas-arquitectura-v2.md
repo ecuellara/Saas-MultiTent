@@ -666,8 +666,6 @@ model Paciente {
   telefono                   String?
   email                      String?
   direccion                  String?
-  ubigeoCodigo               String?
-  ubigeo                     Ubigeo?   @relation(fields: [ubigeoCodigo], references: [codigo])
   contactoEmergenciaNombre   String?
   contactoEmergenciaTelefono String?
   representanteNombre        String?
