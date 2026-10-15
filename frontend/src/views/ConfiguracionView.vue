@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import AvisoError from '../components/ui/AvisoError.vue'
 import CargandoBloque from '../components/ui/CargandoBloque.vue'
 import FechaInput from '../components/ui/FechaInput.vue'
@@ -17,8 +18,10 @@ import { mensajeDeError } from '../services/errores'
 import { useSessionStore } from '../stores/session'
 import { Cog6ToothIcon } from '@heroicons/vue/24/outline'
 import ModuloHero from '../components/ui/ModuloHero.vue'
+import SeccionCalendario from '../components/configuracion/SeccionCalendario.vue'
 
 const sesion = useSessionStore()
+const ruta = useRoute()
 
 const config = ref<Configuracion | null>(null)
 const cargando = ref(true)
@@ -87,6 +90,15 @@ async function cargar(): Promise<void> {
 }
 
 onMounted(cargar)
+
+// Atajo desde la Agenda («Suscribir mi agenda»): baja a la sección Calendario.
+onMounted(() => {
+  if (ruta.hash === '#calendario') {
+    requestAnimationFrame(() => {
+      document.getElementById('calendario')?.scrollIntoView({ behavior: 'smooth' })
+    })
+  }
+})
 
 function agregarDescanso(): void {
   error.value = ''
@@ -294,6 +306,10 @@ const campo = 'w-full rounded-xl border border-line bg-background-soft/60 px-3 p
           </button>
         </div>
       </fieldset>
+
+      <!-- Fuera del fieldset a propósito: los feeds se gestionan con permiso de
+        agenda (`appointments.write`), no con el de gestión de la clínica. -->
+      <SeccionCalendario class="mt-4" />
     </template>
   </div>
 </template>

@@ -8,6 +8,8 @@ import EstadoVacio from '../../components/ui/EstadoVacio.vue'
 import ModalConfirmar from '../../components/ui/ModalConfirmar.vue'
 import FechaInput from '../../components/ui/FechaInput.vue'
 import { listarTratamientos, type Tratamiento } from '../../services/catalogos'
+import { listarSedes, type Sede } from '../../services/catalogos'
+import { enlaceGoogleCalendar } from '../../services/agenda-ics'
 import {
   actualizarCita,
   cancelarCita,
@@ -17,7 +19,7 @@ import {
   type Cita,
 } from '../../services/citas'
 import { mensajeDeError } from '../../services/errores'
-import { fechaLarga, hora12, hoyLocal, sumarDias } from '../../services/fechas'
+import { fechaLarga, hora12, hoyLocal, paraInputFecha, sumarDias } from '../../services/fechas'
 import { listarPacientes, type Paciente } from '../../services/pacientes'
 import { useSessionStore } from '../../stores/session'
 import { CalendarDaysIcon } from '@heroicons/vue/24/outline'
@@ -37,6 +39,7 @@ const fecha = ref(hoyLocal())
 const citas = ref<Cita[]>([])
 const pacientes = ref<Paciente[]>([])
 const tratamientos = ref<Tratamiento[]>([])
+const sedes = ref<Sede[]>([])
 const cargando = ref(true)
 const error = ref('')
 const ocupada = ref('')
@@ -49,6 +52,7 @@ const puedeCobrar = computed(() => sesion.puede('payments.write'))
 
 const mapaPacientes = computed(() => new Map(pacientes.value.map((p) => [p.id, p])))
 const mapaTratamientos = computed(() => new Map(tratamientos.value.map((t) => [t.id, t.nombre])))
+const mapaSedes = computed(() => new Map(sedes.value.map((s) => [s.id, s.nombre])))
 
 function nombrePaciente(id: string): string {
   const p = mapaPacientes.value.get(id)
@@ -65,14 +69,16 @@ async function cargar(): Promise<void> {
   cargando.value = true
   error.value = ''
   try {
-    const [c, p, t] = await Promise.all([
+    const [c, p, t, s] = await Promise.all([
       listarCitas(fecha.value),
       listarPacientes(),
       listarTratamientos(),
+      listarSedes().catch(() => [] as Sede[]),
     ])
     citas.value = c
     pacientes.value = p
     tratamientos.value = t
+    sedes.value = s
   } catch (e) {
     error.value = mensajeDeError(e, 'No se pudo cargar la agenda')
   } finally {
@@ -119,6 +125,22 @@ async function alCrear(): Promise<void> {
   modalNueva.value = false
   await cargar()
 }
+
+/**
+ * Enlace «Añadir a Google Calendar» de UNA cita: se construye en el cliente,
+ * sin backend ni claves. La fecha civil sale del instante guardado (UTC).
+ */
+function enlaceCita(cita: Cita): string {
+  const tratamiento = cita.tratamientoId ? (mapaTratamientos.value.get(cita.tratamientoId) ?? null) : null
+  return enlaceGoogleCalendar({
+    titulo: tratamiento ? `${nombrePaciente(cita.pacienteId)} — ${tratamiento}` : nombrePaciente(cita.pacienteId),
+    fecha: paraInputFecha(cita.fecha),
+    horaInicio: cita.horaInicio,
+    horaFin: cita.horaFin,
+    sede: (cita.sedeId && mapaSedes.value.get(cita.sedeId)) || null,
+    detalle: `Cita ${cita.token}`,
+  })
+}
 </script>
 
 <template>
@@ -159,6 +181,14 @@ async function alCrear(): Promise<void> {
         @click="fecha = hoyLocal()"
       >
         Hoy
+      </button>
+      <button
+        type="button"
+        class="rounded-md border border-line px-2.5 py-1.5 text-sm text-ink hover:bg-background-soft"
+        title="Crea un feed para ver tu agenda en el calendario del celular"
+        @click="router.push({ name: 'configuracion', hash: '#calendario' })"
+      >
+        Suscribir mi agenda
       </button>
 
       <p class="ml-auto text-xs text-muted">
@@ -217,52 +247,66 @@ async function alCrear(): Promise<void> {
             <p v-if="cita.observacion" class="mt-1 text-xs text-muted">{{ cita.observacion }}</p>
           </div>
 
-          <div v-if="puedeEscribir" class="flex shrink-0 flex-wrap gap-1">
-            <button
-              v-if="cita.estado === 'pendiente'"
-              type="button"
-              class="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-background-soft disabled:opacity-60"
-              :disabled="ocupada === cita.id"
-              @click="cambiarEstado(cita, 'confirmada')"
+          <div class="flex shrink-0 flex-wrap gap-1">
+            <template v-if="puedeEscribir">
+              <button
+                v-if="cita.estado === 'pendiente'"
+                type="button"
+                class="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-background-soft disabled:opacity-60"
+                :disabled="ocupada === cita.id"
+                @click="cambiarEstado(cita, 'confirmada')"
+              >
+                Confirmar
+              </button>
+              <button
+                v-if="cita.estado === 'confirmada' || cita.estado === 'recordatorio_enviado'"
+                type="button"
+                class="rounded border border-line px-2 py-1 text-xs text-success hover:bg-success/10 disabled:opacity-60"
+                :disabled="ocupada === cita.id"
+                @click="cambiarEstado(cita, 'realizada')"
+              >
+                Realizada
+              </button>
+              <button
+                v-if="cita.estado === 'confirmada' || cita.estado === 'recordatorio_enviado'"
+                type="button"
+                class="rounded border border-line px-2 py-1 text-xs text-muted hover:bg-background-soft disabled:opacity-60"
+                :disabled="ocupada === cita.id"
+                @click="cambiarEstado(cita, 'no_asistio')"
+              >
+                No asistió
+              </button>
+              <button
+                v-if="puedeCobrar && cita.estado !== 'cancelada'"
+                type="button"
+                class="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-background-soft disabled:opacity-60"
+                :disabled="ocupada === cita.id"
+                @click="router.push({ name: 'pagos', query: { cita: cita.id } })"
+              >
+                Cobrar
+              </button>
+              <button
+                v-if="cita.estado !== 'cancelada' && cita.estado !== 'realizada'"
+                type="button"
+                class="rounded border border-line px-2 py-1 text-xs text-error hover:bg-error/10 disabled:opacity-60"
+                :disabled="ocupada === cita.id"
+                @click="porCancelar = cita"
+              >
+                Cancelar
+              </button>
+            </template>
+            <!-- Sin backend ni claves (se construye en el cliente): visible con
+              solo lectura de agenda. -->
+            <a
+              v-if="cita.estado !== 'cancelada'"
+              :href="enlaceCita(cita)"
+              target="_blank"
+              rel="noopener"
+              title="Añade esta cita a tu calendario personal de Google"
+              class="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-background-soft"
             >
-              Confirmar
-            </button>
-            <button
-              v-if="cita.estado === 'confirmada' || cita.estado === 'recordatorio_enviado'"
-              type="button"
-              class="rounded border border-line px-2 py-1 text-xs text-success hover:bg-success/10 disabled:opacity-60"
-              :disabled="ocupada === cita.id"
-              @click="cambiarEstado(cita, 'realizada')"
-            >
-              Realizada
-            </button>
-            <button
-              v-if="cita.estado === 'confirmada' || cita.estado === 'recordatorio_enviado'"
-              type="button"
-              class="rounded border border-line px-2 py-1 text-xs text-muted hover:bg-background-soft disabled:opacity-60"
-              :disabled="ocupada === cita.id"
-              @click="cambiarEstado(cita, 'no_asistio')"
-            >
-              No asistió
-            </button>
-            <button
-              v-if="puedeCobrar && cita.estado !== 'cancelada'"
-              type="button"
-              class="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-background-soft disabled:opacity-60"
-              :disabled="ocupada === cita.id"
-              @click="router.push({ name: 'pagos', query: { cita: cita.id } })"
-            >
-              Cobrar
-            </button>
-            <button
-              v-if="cita.estado !== 'cancelada' && cita.estado !== 'realizada'"
-              type="button"
-              class="rounded border border-line px-2 py-1 text-xs text-error hover:bg-error/10 disabled:opacity-60"
-              :disabled="ocupada === cita.id"
-              @click="porCancelar = cita"
-            >
-              Cancelar
-            </button>
+              Añadir a Google
+            </a>
           </div>
         </div>
       </li>

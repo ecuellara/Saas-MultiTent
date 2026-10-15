@@ -8,7 +8,7 @@
     "dev": "vite",
     "prebuild": "node scripts/vercel-config.mjs verificar",
     "configurar:vercel": "node scripts/vercel-config.mjs configurar",
-    "test:deploy": "node --experimental-strip-types --test test/despliegue.test.mjs test/refresh.test.mjs test/calendario.test.mjs test/odontograma.test.mjs test/odontograma-svg.test.mjs",
+    "test:deploy": "node --experimental-strip-types --test test/despliegue.test.mjs test/refresh.test.mjs test/calendario.test.mjs test/agenda-ics.test.mjs test/odontograma.test.mjs test/odontograma-svg.test.mjs",
     "build": "vue-tsc -b && vite build",
     "typecheck": "vue-tsc -b --force",
     "test:izipay": "node --experimental-strip-types --test test/izipay-glue.test.mjs test/izipay-form.test.mjs",

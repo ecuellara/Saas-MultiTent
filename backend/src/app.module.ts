@@ -17,6 +17,7 @@ import { ConfiguracionModule } from './modules/configuracion/configuracion.modul
 import { ConsentimientosModule } from './modules/consentimientos/consentimientos.module.js';
 import { EspecialidadesModule } from './modules/especialidades/especialidades.module.js';
 import { FacturacionModule } from './modules/facturacion/facturacion.module.js';
+import { FeedsCalendarioModule } from './modules/feeds-calendario/feeds-calendario.module.js';
 import { HistorialesModule } from './modules/historiales/historiales.module.js';
 import { InsumosModule } from './modules/insumos/insumos.module.js';
 import { OdontogramaModule } from './modules/odontograma/odontograma.module.js';
@@ -47,6 +48,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module.js';
     ConsentimientosModule,
     EspecialidadesModule,
     FacturacionModule,
+    FeedsCalendarioModule,
     HistorialesModule,
     OdontogramaModule,
     HealthModule,

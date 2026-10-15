@@ -1,0 +1,19 @@
+{
+  "name": "Clínica Dental | Gestión",
+  "short_name": "Clínica Dental",
+  "description": "Agenda, pacientes y pagos de la clínica",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0756a3",
+  "background_color": "#f4f8fa",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

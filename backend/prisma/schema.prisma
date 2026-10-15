@@ -146,6 +146,7 @@ model Tenant {
   consentimientos          ConsentimientoFirmado[]
   googleAccounts           GoogleAccount[]
   pagos                    Pago[]
+  feedsCalendario          FeedCalendario[]
   intentosIzipay            IntentoIzipay[]
   pagoDetalles             PagoDetalle[]
   cuotas                   Cuota[]
@@ -577,6 +578,25 @@ model GoogleAccount {
   tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, userId])
+}
+
+// ---- Feed ICS suscribible (sin OAuth; etapa futura en docs/calendario-oauth-futuro.md) ----
+
+model FeedCalendario {
+  id         String   @id @default(uuid())
+  tenantId   String
+  sedeId     String?
+  dentistaId String?
+  // Secreto largo y aleatorio (32 bytes en base64url). Es la ÚNICA
+  // autenticación del feed público: nunca se lista sin permiso de la clínica
+  // y se revoca regenerándolo o desactivándolo.
+  token      String   @unique
+  activo     Boolean  @default(true)
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId, activo])
 }
 
 // ============================================================
