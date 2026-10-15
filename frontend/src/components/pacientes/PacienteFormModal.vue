@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { CheckIcon } from '@heroicons/vue/24/solid'
 import { mensajeDeError } from '../../services/errores'
 import { calcularEdad, deInputFecha, paraInputFecha } from '../../services/fechas'
-import { actualizarPaciente, crearPaciente, obtenerEstadoUbigeo, type Paciente, type PacienteEntrada } from '../../services/pacientes'
+import { actualizarPaciente, crearPaciente, type Paciente, type PacienteEntrada } from '../../services/pacientes'
 import AvisoError from '../ui/AvisoError.vue'
 import FechaNacimientoInput from '../ui/FechaNacimientoInput.vue'
 import ModalBase from '../ui/ModalBase.vue'
@@ -40,7 +40,7 @@ const CAMPOS_PERSONALES: Campo[] = [
 ]
 const CAMPOS_CONTACTO: Campo[] = [
   { clave: 'telefono', etiqueta: 'Celular', inputmode: 'tel' }, { clave: 'email', etiqueta: 'Correo electrónico', tipo: 'email' },
-  { clave: 'direccion', etiqueta: 'Dirección', completo: true }, { clave: 'ubigeoCodigo', etiqueta: 'Código de ubigeo' },
+  { clave: 'direccion', etiqueta: 'Dirección', completo: true },
   { clave: 'contactoEmergenciaNombre', etiqueta: 'Contacto de emergencia' },
   { clave: 'contactoEmergenciaTelefono', etiqueta: 'Celular de emergencia', inputmode: 'tel' },
 ]
@@ -74,25 +74,6 @@ const edad = computed(() => calcularEdad(form.fechaNac ? deInputFecha(form.fecha
 const textoEdad = computed(() => edad.value === null ? 'Selecciona una fecha para calcularla' : `${edad.value} año${edad.value === 1 ? '' : 's'}${edad.value < 18 ? ' · menor de edad' : ''}`)
 const esMenor = computed(() => edad.value !== null && edad.value < 18)
 const camposPaso = computed(() => paso.value === 1 ? CAMPOS_PERSONALES : paso.value === 2 ? CAMPOS_CONTACTO : CAMPOS_CLINICOS)
-
-/**
- * El ubigeo es FK a un catálogo que está VACÍO: con texto libre el guardado
- * fallaría (P2003). Si no hay datos, el campo se deshabilita con el motivo en
- * lugar de ofrecerse. Cuando se cargue el catálogo será un selector, no texto.
- */
-const ubigeoVacio = ref(false)
-onMounted(async () => {
-  try {
-    ubigeoVacio.value = (await obtenerEstadoUbigeo()).total === 0
-  } catch {
-    // Sin estado no se puede asegurar nada: se deja escribir y el backend
-    // responde 400 claro si el código no existe.
-    ubigeoVacio.value = false
-  }
-})
-function campoDeshabilitado(clave: string): boolean {
-  return clave === 'ubigeoCodigo' && ubigeoVacio.value
-}
 
 function validarPaso(actual: number): boolean {
   error.value = ''
@@ -173,12 +154,7 @@ async function guardar(): Promise<void> {
             <textarea v-else-if="campo.area" :id="`paciente-${campo.clave}`" v-model="form[campo.clave]" rows="3"
               class="w-full resize-none rounded-xl border border-line bg-background px-3 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary" />
             <input v-else :id="`paciente-${campo.clave}`" v-model="form[campo.clave]" :type="campo.tipo ?? 'text'" :inputmode="campo.inputmode"
-              :disabled="campoDeshabilitado(campo.clave)" :placeholder="campo.clave === 'ubigeoCodigo' && ubigeoVacio ? 'Catálogo sin cargar' : undefined"
-              class="w-full rounded-xl border border-line bg-background px-3 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50" />
-            <p v-if="campo.clave === 'ubigeoCodigo' && ubigeoVacio" class="mt-1 text-xs text-muted">
-              Catálogo de ubigeos sin cargar: el campo queda deshabilitado hasta que se
-              carguen los datos oficiales (no se acepta texto libre).
-            </p>
+              class="w-full rounded-xl border border-line bg-background px-3 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary" />
           </div>
         </template>
 

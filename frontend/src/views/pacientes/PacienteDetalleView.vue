@@ -72,7 +72,6 @@ const bloques = computed(() => {
         ['Teléfono', p.telefono ?? '—'],
         ['Correo', p.email ?? '—'],
         ['Dirección', p.direccion ?? '—'],
-        ['Ubigeo', p.ubigeoCodigo ?? '—'],
       ],
     },
     {

@@ -10,7 +10,7 @@ import {
 
 /**
  * Carga del paciente completo según ADR-009 (conservar el modelo clínico):
- * identificación, datos de contacto, ubigeo, contacto de emergencia,
+ * identificación, datos de contacto, contacto de emergencia,
  * representante legal y antecedentes clínicos del `Paciente` de Prisma.
  */
 export class CreatePacienteDto {
@@ -63,11 +63,6 @@ export class CreatePacienteDto {
   @IsOptional()
   @IsString()
   direccion?: string;
-
-  @ApiPropertyOptional({ example: '120101' })
-  @IsOptional()
-  @IsString()
-  ubigeoCodigo?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -180,11 +175,6 @@ export class UpdatePacienteDto {
   @IsOptional()
   @IsEmail()
   email?: string;
-
-  @ApiPropertyOptional({ example: '120101' })
-  @IsOptional()
-  @IsString()
-  ubigeoCodigo?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

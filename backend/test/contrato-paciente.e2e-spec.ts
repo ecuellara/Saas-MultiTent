@@ -32,7 +32,6 @@ const CAMPOS_FORMULARIO = [
   'telefono',
   'email',
   'direccion',
-  'ubigeoCodigo',
   'contactoEmergenciaNombre',
   'contactoEmergenciaTelefono',
   'representanteNombre',
@@ -105,6 +104,19 @@ describe('Contrato del formulario de paciente', () => {
     expect(p.representanteDni).toBeNull();
     // Y no se cuela nada del cliente.
     expect(p.tenantId).toBe(datos.a.tenantId);
+    // El ubigeo se retiró del contrato: era una columna heredada que nunca se
+    // cargó ni se usó, y provocaba un 400 confuso al guardar.
+    expect('ubigeoCodigo' in p).toBe(false);
+  });
+
+  it('rechaza el ubigeo retirado si un cliente antiguo lo envía', async () => {
+    const r = await request(app.getHttpServer())
+      .post('/api/pacientes')
+      .set(H)
+      .send(cuerpoDelFrontend({ ubigeoCodigo: '150101' }));
+    // El DTO es estricto: un campo retirado no se ignora en silencio.
+    expect(r.status, JSON.stringify(r.body)).toBe(400);
+    expect(JSON.stringify(r.body)).toContain('ubigeoCodigo');
   });
 
   it('acepta la fecha como instante ISO (lo que envía el formulario)', async () => {

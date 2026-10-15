@@ -32,7 +32,6 @@ import { RolesModule } from './modules/roles/roles.module.js';
 import { SedesModule } from './modules/sedes/sedes.module.js';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module.js';
 import { TratamientosModule } from './modules/tratamientos/tratamientos.module.js';
-import { UbigeoModule } from './modules/ubigeo/ubigeo.module.js';
 import { UsuariosModule } from './modules/usuarios/usuarios.module.js';
 
 @Module({
@@ -59,7 +58,6 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module.js';
     PlantillasModule,
     RolesModule,
     SedesModule,
-    UbigeoModule,
     UsuariosModule,
     SubscriptionsModule,
   ],

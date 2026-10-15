@@ -21,7 +21,6 @@ export interface Paciente {
   telefono: string | null
   email: string | null
   direccion: string | null
-  ubigeoCodigo: string | null
   contactoEmergenciaNombre: string | null
   contactoEmergenciaTelefono: string | null
   representanteNombre: string | null
@@ -195,14 +194,4 @@ export async function descargarDocumento(
 /** `true` si el documento es una imagen que se puede previsualizar. */
 export function esImagen(mimeType: string): boolean {
   return mimeType === 'image/png' || mimeType === 'image/jpeg'
-}
-
-/**
- * Estado del catálogo de ubigeos (vacío en producción: la carga de datos está
- * pendiente). El formulario de paciente lo consulta para no ofrecer un campo
- * libre que el guardado rechazaría.
- */
-export async function obtenerEstadoUbigeo(): Promise<{ total: number }> {
-  const { data } = await api.get<{ total: number }>('/ubigeos/estado')
-  return data
 }
