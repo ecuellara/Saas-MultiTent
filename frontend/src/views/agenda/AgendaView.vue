@@ -35,7 +35,7 @@ import {
   finMes,
   formatearFechaUTC,
   hora12,
-  hoyLocal,
+  hoyLima,
   inicioMes,
   paraInputFecha,
   sumarDias,
@@ -66,7 +66,7 @@ const VISTAS: Array<{ valor: VistaAgenda; etiqueta: string }> = [
 ]
 
 const vista = ref<VistaAgenda>('dia')
-const fecha = ref(hoyLocal())
+const fecha = ref(hoyLima())
 const filtros = reactive({ sedeId: '', dentistaId: '', estado: '' })
 
 const citas = ref<Cita[]>([])
@@ -127,29 +127,42 @@ const resumen = computed(() => ({
   canceladas: citas.value.filter((c) => c.estado === 'cancelada').length,
 }))
 
+/**
+ * Descarta respuestas viejas: al navegar rápido entre fechas/vistas se lanzan
+ * varias peticiones y la que llega última no es necesariamente la actual.
+ */
+let solicitudCitas = 0
+
 async function cargarCitas(): Promise<void> {
+  const actual = ++solicitudCitas
   cargando.value = true
   error.value = ''
   armado.value = ''
   try {
-    citas.value = await listarCitasRango({
+    const lista = await listarCitasRango({
       ...rango.value,
       ...(filtros.sedeId ? { sedeId: filtros.sedeId } : {}),
       ...(filtros.dentistaId ? { dentistaId: filtros.dentistaId } : {}),
       ...(filtros.estado ? { estado: filtros.estado } : {}),
     })
+    if (actual !== solicitudCitas) return
+    citas.value = lista
   } catch (e) {
+    if (actual !== solicitudCitas) return
     error.value = mensajeDeError(e, 'No se pudo cargar la agenda')
   } finally {
-    cargando.value = false
+    if (actual === solicitudCitas) cargando.value = false
   }
 }
 
 async function cargarCatalogos(): Promise<void> {
   try {
+    // Pacientes y tratamientos se degradan por separado: un rol con solo
+    // `appointments.read` recibe 403 en `/pacientes` y no debe quedarse sin
+    // sedes, plantillas ni agenda.
     const [p, t, s, c, pl] = await Promise.all([
-      listarPacientes(),
-      listarTratamientos(),
+      listarPacientes().catch(() => [] as Paciente[]),
+      listarTratamientos().catch(() => [] as Tratamiento[]),
       listarSedes().catch(() => [] as Sede[]),
       obtenerConfiguracion().catch(() => null),
       listarPlantillas().catch(() => ({ plantillas: [], marcadores: {} })),
@@ -187,7 +200,7 @@ function mover(dias: number): void {
 }
 
 function irHoy(): void {
-  fecha.value = hoyLocal()
+  fecha.value = hoyLima()
 }
 
 function irADia(dia: string): void {
@@ -323,7 +336,8 @@ function enlaceAviso(cita: Cita, clave: string): string {
   return enlaceWhatsapp(telefonoDe(cita) as string, mensaje)
 }
 
-/** «Confirmar por WhatsApp»: abre el chat y marca confirmada (endpoint existente). */async function confirmarPorWhatsapp(cita: Cita): Promise<void> {
+/** «Confirmar por WhatsApp»: abre el chat y marca confirmada (endpoint existente). */
+async function confirmarPorWhatsapp(cita: Cita): Promise<void> {
   await cambiarEstado(cita, 'confirmada')
 }
 
@@ -518,7 +532,7 @@ function motivoAviso(cita: Cita): string {
               <div class="flex shrink-0 flex-wrap gap-1">
                 <template v-if="puedeEscribir">
                   <button
-                    v-if="cita.estado === 'pendiente'"
+                    v-if="cita.estado === 'pendiente' || cita.estado === 'reprogramada'"
                     type="button"
                     class="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-background-soft disabled:opacity-60"
                     :disabled="ocupada === cita.id"
@@ -527,7 +541,7 @@ function motivoAviso(cita: Cita): string {
                     Confirmar
                   </button>
                   <button
-                    v-if="cita.estado === 'confirmada' || cita.estado === 'recordatorio_enviado'"
+                    v-if="['confirmada', 'recordatorio_enviado', 'reprogramada'].includes(cita.estado)"
                     type="button"
                     class="rounded border border-line px-2 py-1 text-xs text-success hover:bg-success/10 disabled:opacity-60"
                     :disabled="ocupada === cita.id"
@@ -536,7 +550,7 @@ function motivoAviso(cita: Cita): string {
                     Realizada
                   </button>
                   <button
-                    v-if="cita.estado === 'confirmada' || cita.estado === 'recordatorio_enviado'"
+                    v-if="['confirmada', 'recordatorio_enviado', 'reprogramada'].includes(cita.estado)"
                     type="button"
                     class="rounded border border-line px-2 py-1 text-xs text-muted hover:bg-background-soft disabled:opacity-60"
                     :disabled="ocupada === cita.id"
@@ -585,9 +599,11 @@ function motivoAviso(cita: Cita): string {
                 >
                   Añadir a Google
                 </a>
-                <!-- WhatsApp manual: el enlace lo compone el cliente con la plantilla. -->
+                <!-- WhatsApp manual: el enlace lo compone el cliente con la plantilla.
+                  Abrir el chat implica cambiar el estado de la cita, así que exige
+                  el mismo permiso de escritura que el PATCH. -->
                 <a
-                  v-if="cita.estado === 'pendiente' && puedeAvisar(cita, 'cita_confirmacion')"
+                  v-if="puedeEscribir && cita.estado === 'pendiente' && puedeAvisar(cita, 'cita_confirmacion')"
                   :href="enlaceAviso(cita, 'cita_confirmacion')"
                   target="_blank"
                   rel="noopener"
@@ -605,7 +621,7 @@ function motivoAviso(cita: Cita): string {
                   Confirmar por WhatsApp
                 </span>
                 <a
-                  v-if="cita.estado !== 'cancelada' && cita.estado !== 'realizada' && puedeAvisar(cita, 'cita_cancelacion')"
+                  v-if="puedeEscribir && cita.estado !== 'cancelada' && cita.estado !== 'realizada' && puedeAvisar(cita, 'cita_cancelacion')"
                   :href="enlaceAviso(cita, 'cita_cancelacion')"
                   target="_blank"
                   rel="noopener"

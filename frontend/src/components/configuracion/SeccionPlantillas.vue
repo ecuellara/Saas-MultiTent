@@ -47,7 +47,11 @@ async function cargar(): Promise<void> {
   }
 }
 
-onMounted(cargar)
+// El `v-if` del template no evita que `onMounted` dispare el GET: sin permiso
+// de lectura de agenda el 403 sería ruido en cada visita a Configuración.
+onMounted(() => {
+  if (puedeVer.value) void cargar()
+})
 
 function cambiado(p: PlantillaVista): boolean {
   return (textos[p.clave] ?? '') !== p.texto

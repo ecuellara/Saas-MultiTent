@@ -115,7 +115,9 @@ export function calcularEdad(fechaNac: string | null): number | null {
 /** «09:30» → «9:30 a. m.» para mostrar. */
 export function hora12(hora: string): string {
   const [h, m] = hora.split(':').map(Number)
-  if (Number.isNaN(h) || Number.isNaN(m)) return hora
+  // `''.split(':')` da `[0]`: `m` queda `undefined` y `Number.isNaN(undefined)`
+  // es `false`, así que hay que comprobar finitud, no solo NaN.
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hora
   const sufijo = h < 12 ? 'a. m.' : 'p. m.'
   const h12 = h % 12 === 0 ? 12 : h % 12
   return `${h12}:${String(m).padStart(2, '0')} ${sufijo}`
@@ -124,7 +126,7 @@ export function hora12(hora: string): string {
 /** Suma minutos a «HH:MM» y devuelve «HH:MM» (para calcular la hora de fin). */
 export function sumarMinutos(hora: string, minutos: number): string {
   const [h, m] = hora.split(':').map(Number)
-  if (Number.isNaN(h) || Number.isNaN(m)) return hora
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hora
   const total = (h * 60 + m + minutos + 1440) % 1440
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }

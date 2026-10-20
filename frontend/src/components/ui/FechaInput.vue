@@ -46,7 +46,9 @@ function abrir(): void {
   // Sin valor se cae en HOY (no en el máximo): un campo vacío con el máximo
   // por defecto abría el panel en el año 2100.
   const base = fechaDeApertura(valor.value, hoyLima(), maxDia.value)
-  const p = partes(base) ?? partes(maxDia.value)!
+  // Si el valor guardado está corrupto, `fechaDeApertura` lo devuelve tal cual:
+  // se cae en HOY antes que en el año 2100.
+  const p = partes(base) ?? partes(hoyLima()) ?? partes(maxDia.value)!
   vista.value = { y: p.y, m: p.m }
   nivel.value = nivelDeApertura(props.nivelInicial)
   abierto.value = true

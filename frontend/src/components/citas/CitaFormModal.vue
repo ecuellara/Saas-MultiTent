@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { listarMiembros, listarSedes, listarTratamientos, type Miembro, type Sede, type Tratamiento } from '../../services/catalogos'
 import { crearCita, obtenerDisponibilidad, type Cita, type HuecoDisponibilidad } from '../../services/citas'
 import { mensajeDeError } from '../../services/errores'
-import { deInputFecha, hora12, hoyLocal, sumarMinutos } from '../../services/fechas'
+import { hora12, hoyLima, sumarMinutos } from '../../services/fechas'
 import { listarPacientes, type Paciente } from '../../services/pacientes'
 import { useSessionStore } from '../../stores/session'
 import AvisoError from '../ui/AvisoError.vue'
@@ -44,9 +44,10 @@ const cargando = ref(true)
 const guardando = ref(false)
 const error = ref('')
 
-/** Hoy en fecha civil local. El backend rechaza agendar en el pasado, así que el
- *  calendario no ofrece días anteriores (la hora sigue validándose allí). */
-const hoy = hoyLocal()
+/** Hoy civil en la zona del consultorio. El backend rechaza agendar en el
+ *  pasado, así que el calendario no ofrece días anteriores (la hora sigue
+ *  validándose allí). */
+const hoy = hoyLima()
 
 /** `GET /memberships` exige `members.manage`: sin permiso no se ofrece el selector. */
 const puedeVerEquipo = computed(() => sesion.puede('members.manage'))
@@ -121,31 +122,42 @@ function alCambiarInicio(): void {
  */
 const huecos = ref<HuecoDisponibilidad[]>([])
 const cargandoHuecos = ref(false)
+let solicitudHuecos = 0
 
+/**
+ * La rejilla se calcula con la MISMA duración que se va a guardar: el «Fin» es
+ * editable, así que la duración del tratamiento solo sirve de valor inicial.
+ */
 const duracionActual = computed(() => {
-  const t = tratamientos.value.find((x) => x.id === form.tratamientoId)
-  if (t) return t.duracionMin
   const [h1, m1] = form.horaInicio.split(':').map(Number)
   const [h2, m2] = form.horaFin.split(':').map(Number)
-  const d = h2 * 60 + m2 - (h1 * 60 + m1)
-  return d > 0 ? d : 30
+  if (Number.isFinite(h1) && Number.isFinite(m1) && Number.isFinite(h2) && Number.isFinite(m2)) {
+    const d = h2 * 60 + m2 - (h1 * 60 + m1)
+    if (d > 0) return d
+  }
+  const t = tratamientos.value.find((x) => x.id === form.tratamientoId)
+  return t?.duracionMin ?? 30
 })
 
 async function cargarHuecos(): Promise<void> {
   if (!form.fecha) return
+  const actual = ++solicitudHuecos
   cargandoHuecos.value = true
   try {
-    huecos.value = await obtenerDisponibilidad(
+    const lista = await obtenerDisponibilidad(
       form.fecha,
       duracionActual.value,
       form.sedeId || null,
       form.dentistaId || null,
     )
+    // Navegar rápido entre fechas/sedes no debe dejar la rejilla de una
+    // consulta anterior.
+    if (actual === solicitudHuecos) huecos.value = lista
   } catch {
     // Sin rejilla no se bloquea el formulario: el backend valida al guardar.
-    huecos.value = []
+    if (actual === solicitudHuecos) huecos.value = []
   } finally {
-    cargandoHuecos.value = false
+    if (actual === solicitudHuecos) cargandoHuecos.value = false
   }
 }
 
@@ -194,7 +206,7 @@ async function guardar(): Promise<void> {
       tratamientoId: form.tratamientoId || null,
       sedeId: form.sedeId || null,
       dentistaId: form.dentistaId || null,
-      fecha: deInputFecha(form.fecha) as string,
+      fecha: form.fecha,
       horaInicio: form.horaInicio,
       horaFin: form.horaFin,
       observacion: form.observacion.trim() || null,

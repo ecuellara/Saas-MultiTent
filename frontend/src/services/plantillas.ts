@@ -11,7 +11,8 @@ export { EJEMPLO_MARCADORES, sustituirMarcadores, vistaPrevia } from './plantill
  * `{{marcador}}`, sin motor de plantillas.
  */
 
-export interface PlantillaVista {  clave: string
+export interface PlantillaVista {
+  clave: string
   nombre: string
   texto: string
   activo: boolean

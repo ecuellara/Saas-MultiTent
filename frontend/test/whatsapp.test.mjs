@@ -21,6 +21,13 @@ test('teléfonos mal formados → null (el botón se deshabilita, no se rompe)',
   assert.equal(normalizarTelefono('123'), null)
   assert.equal(normalizarTelefono('99900011122233344'), null) // más de 15
   assert.equal(normalizarTelefono('6111222'), null) // 7 dígitos
+  // Una extensión no forma parte del número: no se debe abrir otro chat.
+  assert.equal(normalizarTelefono('999000111 ext 2'), null)
+})
+
+test('el 0 troncal también se quita cuando va tras el código de país', () => {
+  assert.equal(normalizarTelefono('+51 (0) 999 000 111'), '51999000111')
+  assert.equal(normalizarTelefono('51 0 999 000 111'), '51999000111')
 })
 
 test('números con país extranjero se dejan tal cual', () => {
