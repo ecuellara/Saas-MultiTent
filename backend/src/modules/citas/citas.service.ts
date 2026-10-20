@@ -127,6 +127,12 @@ export interface HuecoDisponibilidad {
   motivo?: 'pasado' | 'fuera de horario' | 'descanso' | 'ocupado';
 }
 
+/** Datos del día ya cargados para evaluar muchas franjas sin volver a consultar. */
+interface ContextoFranja {
+  cfg: { horario: unknown; descansos: unknown } | null;
+  citasDelDia: CitaRow[];
+}
+
 /** Rango máximo de `GET /citas` con `desde`/`hasta` (la vista de mes no puede traerse la clínica entera). */
 export const MAX_DIAS_RANGO_CITAS = 62;
 
@@ -151,6 +157,30 @@ function mismoDia(a: Date | string, b: Date | string): boolean {
     da.getUTCMonth() === db.getUTCMonth() &&
     da.getUTCDate() === db.getUTCDate()
   );
+}
+
+/** Solape sobre una lista de citas ya cargada (mismas reglas que `haySolapamiento`). */
+function solapaEnLista(
+  citas: CitaRow[],
+  fecha: Date | string,
+  horaInicio: string,
+  horaFin: string,
+  recurso: { sedeId?: string | null; dentistaId?: string | null },
+  excluirId?: string,
+): boolean {
+  const inicio = aMinutos(horaInicio);
+  const fin = aMinutos(horaFin);
+  for (const c of citas) {
+    if (excluirId && c.id === excluirId) continue;
+    if (c.estado === 'cancelada') continue;
+    if (recurso.sedeId && c.sedeId !== recurso.sedeId) continue;
+    if (recurso.dentistaId && c.dentistaId !== recurso.dentistaId) continue;
+    if (!mismoDia(c.fecha, fecha)) continue;
+    const ci = aMinutos(c.horaInicio);
+    const cf = aMinutos(c.horaFin);
+    if (inicio < cf && ci < fin) return true;
+  }
+  return false;
 }
 
 /** Normaliza `TenantConfig.horario` (Json libre) a la forma documentada. */
@@ -182,19 +212,24 @@ function motivoRango(horaInicio: string, horaFin: string): string | null {
  *
  * La cita ocurre en una **fecha civil** y una **hora local del consultorio**; la
  * fecha se guarda como medianoche UTC (columnas `@db.Date`), así que el instante
- * se reconstruye con las partes UTC de la fecha más la hora indicada, en la zona
- * del servidor (que es la del consultorio).
+ * se reconstruye con las partes UTC de la fecha más la hora indicada.
+ *
+ * El offset es SIEMPRE −05:00 (Perú no tiene horario de verano): usar
+ * `new Date(y, m, d, hh, mm)` dependía de la zona del proceso y en un contenedor
+ * UTC marcaba como pasadas las franjas de la mañana.
  *
  * Sin esta comprobación se podía agendar para hoy a las 11:00 cuando ya eran las
  * 22:00, y el usuario recibía un mensaje sobre el horario de atención en lugar
  * del motivo real.
  */
+const OFFSET_LIMA_MIN = 5 * 60;
+
 function motivoPasado(fecha: Date | string, horaInicio: string): string | null {
   const { iso } = partesFecha(fecha);
   const [y, m, d] = iso.split('-').map(Number);
   const [hh, mm] = horaInicio.split(':').map(Number);
   if (![y, m, d, hh, mm].every((n) => Number.isFinite(n))) return null;
-  const inicio = new Date(y, m - 1, d, hh, mm);
+  const inicio = new Date(Date.UTC(y, m - 1, d, hh, mm + OFFSET_LIMA_MIN));
   if (inicio.getTime() < Date.now()) {
     return `No se puede agendar en el pasado: la franja ${iso} ${horaInicio} ya pasó`;
   }
@@ -203,11 +238,11 @@ function motivoPasado(fecha: Date | string, horaInicio: string): string | null {
 
 /**
  * Horario de atención y descansos (`TenantConfig`, ver forma documentada
- * arriba). Decisión deliberada: si el tenant no tiene `TenantConfig`,
- * `horario` es null o el día no está definido, NO se bloquea (comportamiento
- * permisivo por defecto) para no dejar sin agenda a clínicas que aún no
- * configuraron su horario. Solo se rechaza cuando el horario existe y la cita
- * no cabe, o cuando la fecha cae en un descanso.
+ * arriba). Decisión deliberada: si el tenant no tiene `TenantConfig` o su
+ * `horario` es null, NO se bloquea (comportamiento permisivo por defecto) para
+ * no dejar sin agenda a clínicas que aún no configuraron su horario. Si el
+ * horario existe, un día ausente o `null` significa que el consultorio NO
+ * atiende ese día. Solo se acepta cuando la cita cabe y no cae en un descanso.
  */
 function motivoHorario(
   cfg: { horario: unknown; descansos: unknown } | null,
@@ -306,7 +341,7 @@ export class CitasService {
         (Date.UTC(+hasta.slice(0, 4), +hasta.slice(5, 7) - 1, +hasta.slice(8, 10)) -
           Date.UTC(+desde.slice(0, 4), +desde.slice(5, 7) - 1, +desde.slice(8, 10))) /
         86_400_000;
-      if (dias > MAX_DIAS_RANGO_CITAS) {
+      if (dias + 1 > MAX_DIAS_RANGO_CITAS) {
         throw new BadRequestException(
           `El rango máximo es de ${MAX_DIAS_RANGO_CITAS} días`,
         );
@@ -452,7 +487,19 @@ export class CitasService {
     const dentistaId = q.dentistaId ?? null;
 
     const fecha = new Date(`${q.fecha}T00:00:00.000Z`);
+    // Se cargan UNA vez y se evalúan todas las franjas en memoria: antes cada
+    // franja repetía la consulta de configuración y la de citas del día
+    // (~80-115 consultas por petición).
     const cfg = await this.db.tenantConfig.findUnique({ where: { tenantId: ctx.tenantId } });
+    const citasDelDia = await this.db.cita.findMany({
+      where: {
+        fecha,
+        deletedAt: null,
+        ...(sedeId ? { sedeId } : {}),
+        ...(dentistaId ? { dentistaId } : {}),
+      },
+    });
+    const contexto: ContextoFranja = { cfg, citasDelDia };
     const franja = franjaDelDia(cfg?.horario ?? null, fecha);
     const apertura = franja?.inicio ?? HORARIO_DEFECTO.inicio;
     const cierre = franja?.fin ?? HORARIO_DEFECTO.fin;
@@ -465,7 +512,14 @@ export class CitasService {
     ) {
       const horaInicio = aTextoHora(ini);
       const horaFin = aTextoHora(ini + q.duracion);
-      const ev = await this.evaluarFranja({ fecha, horaInicio, horaFin, sedeId, dentistaId });
+      const ev = await this.evaluarFranja({
+        fecha,
+        horaInicio,
+        horaFin,
+        sedeId,
+        dentistaId,
+        contexto,
+      });
       huecos.push(
         ev.ok
           ? { horaInicio, disponible: true }
@@ -480,6 +534,9 @@ export class CitasService {
    * (rango → pasado → horario/descanso → solape) y con los MISMOS mensajes.
    * No lanza: devuelve el primer fallo para que el llamador decida (el
    * guardado lanza 400, la disponibilidad informa el motivo).
+   *
+   * `contexto` permite reutilizar la configuración y las citas del día ya
+   * cargadas (rejilla); sin él se consultan, como hace el guardado.
    */
   async evaluarFranja(args: {
     fecha: Date | string;
@@ -488,23 +545,22 @@ export class CitasService {
     sedeId?: string | null;
     dentistaId?: string | null;
     excluirId?: string;
+    contexto?: ContextoFranja;
   }): Promise<EvaluacionFranja> {
     const { fecha, horaInicio, horaFin } = args;
     const rango = motivoRango(horaInicio, horaFin);
     if (rango) return { ok: false, codigo: 'rango', motivo: rango };
     const pasado = motivoPasado(fecha, horaInicio);
     if (pasado) return { ok: false, codigo: 'pasado', motivo: pasado };
-    const ctx = requireTenant();
-    const cfg = await this.db.tenantConfig.findUnique({ where: { tenantId: ctx.tenantId } });
+    const cfg = args.contexto
+      ? args.contexto.cfg
+      : await this.db.tenantConfig.findUnique({ where: { tenantId: requireTenant().tenantId } });
     const horario = motivoHorario(cfg, fecha, horaInicio, horaFin);
     if (horario) return { ok: false, codigo: horario.codigo, motivo: horario.motivo };
-    const ocupado = await this.haySolapamiento(
-      fecha,
-      horaInicio,
-      horaFin,
-      { sedeId: args.sedeId, dentistaId: args.dentistaId },
-      args.excluirId,
-    );
+    const recurso = { sedeId: args.sedeId, dentistaId: args.dentistaId };
+    const ocupado = args.contexto
+      ? solapaEnLista(args.contexto.citasDelDia, fecha, horaInicio, horaFin, recurso, args.excluirId)
+      : await this.haySolapamiento(fecha, horaInicio, horaFin, recurso, args.excluirId);
     if (ocupado) {
       return { ok: false, codigo: 'ocupado', motivo: 'La cita se solapa con otra existente' };
     }
@@ -559,8 +615,6 @@ export class CitasService {
     recurso: { sedeId?: string | null; dentistaId?: string | null },
     excluirId?: string,
   ): Promise<boolean> {
-    const inicio = aMinutos(horaInicio);
-    const fin = aMinutos(horaFin);
     const delDia = await this.db.cita.findMany({
       where: {
         fecha: new Date(fecha as string),
@@ -569,14 +623,6 @@ export class CitasService {
         ...(recurso.dentistaId ? { dentistaId: recurso.dentistaId } : {}),
       },
     });
-    for (const c of delDia) {
-      if (excluirId && c.id === excluirId) continue;
-      if (c.estado === 'cancelada') continue;
-      if (!mismoDia(c.fecha, fecha)) continue;
-      const ci = aMinutos(c.horaInicio);
-      const cf = aMinutos(c.horaFin);
-      if (inicio < cf && ci < fin) return true;
-    }
-    return false;
+    return solapaEnLista(delDia, fecha, horaInicio, horaFin, recurso, excluirId);
   }
 }

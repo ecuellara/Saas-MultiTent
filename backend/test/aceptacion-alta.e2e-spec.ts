@@ -206,11 +206,15 @@ describe('Aceptación del alta: el primer día del primer cliente', () => {
     const cuerpo = Array.isArray(pacientes.body) ? pacientes.body : pacientes.body?.data;
     expect(cuerpo).toHaveLength(0);
 
-    // El alta siembra las plantillas de WhatsApp por defecto (no vacías).
+    // El alta siembra las plantillas de WhatsApp por defecto (no vacías) y, como
+    // el texto es el de fábrica, `esDefecto` debe ser true aunque exista fila.
     const wa = await http().get('/api/plantillas-whatsapp').set(HD).expect(200);
     expect(wa.body.plantillas).toHaveLength(3);
     expect(
-      wa.body.plantillas.every((p: { activo: boolean; texto: string }) => p.activo && p.texto.includes('{{paciente}}')),
+      wa.body.plantillas.every(
+        (p: { activo: boolean; texto: string; esDefecto: boolean }) =>
+          p.activo && p.texto.includes('{{paciente}}') && p.esDefecto,
+      ),
     ).toBe(true);
   });
 

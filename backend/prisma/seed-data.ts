@@ -32,15 +32,21 @@ import { CATALOGO_PLANTILLAS } from '../src/core/catalogo/plantillas.js';
  * deja el texto editado tal cual.
  */
 export async function sembrarPlantillas(prisma: PrismaClient, tenantId: string): Promise<number> {
+  // Solo se cuentan las que realmente se crean; el `upsert` también actualiza
+  // (sin tocar nada) las que ya existían.
+  const previas = await prisma.plantillaWhatsApp.findMany({
+    where: { tenantId },
+    select: { clave: true },
+  });
+  const existentes = new Set(previas.map((p) => p.clave));
   let creadas = 0;
   for (const c of CATALOGO_PLANTILLAS) {
-    const r = await prisma.plantillaWhatsApp.upsert({
+    await prisma.plantillaWhatsApp.upsert({
       where: { tenantId_clave: { tenantId, clave: c.clave } },
       update: {},
       create: { tenantId, clave: c.clave, texto: c.texto, activo: true },
     });
-    void r;
-    creadas++;
+    if (!existentes.has(c.clave)) creadas++;
   }
   return creadas;
 }

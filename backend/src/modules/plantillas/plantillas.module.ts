@@ -86,7 +86,9 @@ export class PlantillasService {
           nombre: c.nombre,
           texto: fila?.texto ?? c.texto,
           activo: fila?.activo ?? true,
-          esDefecto: !fila,
+          // «Por defecto» significa que el texto es el de fábrica, no que no
+          // exista fila: el alta siembra las 3 y aun así son las de fábrica.
+          esDefecto: !fila || fila.texto === c.texto,
           marcadores: [...c.marcadores],
         };
       }),
@@ -123,7 +125,7 @@ export class PlantillasService {
       nombre: base.nombre,
       texto: fila.texto,
       activo: fila.activo,
-      esDefecto: false,
+      esDefecto: fila.texto === base.texto,
       marcadores: [...base.marcadores],
     };
   }
@@ -159,7 +161,7 @@ export class PlantillasService {
       nombre: base.nombre,
       texto: final.texto,
       activo: final.activo,
-      esDefecto: false,
+      esDefecto: final.texto === base.texto,
       marcadores: [...base.marcadores],
     };
   }

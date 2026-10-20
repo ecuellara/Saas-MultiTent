@@ -120,7 +120,17 @@ describe('Rango de citas y disponibilidad', () => {
     expect(tokens).toContain('CIT-RANGO-01');
     expect(tokens).toContain('CIT-RANGO-02');
     // Sin filtro de clínica cruzada: la cita del fixture de B (2026-03-10) no está en el rango.
-    expect(tokens).not.toContain('CIT-B0001');
+    expect(tokens).not.toContain(datos.b.citaToken);
+
+    // Control real de aislamiento: un rango que SÍ incluye la cita de B no la
+    // devuelve (antes la aserción pasaba solo porque estaba fuera del rango).
+    const cruzado = await request(srv)
+      .get('/api/citas?desde=2026-03-09&hasta=2026-03-11')
+      .set(HA)
+      .expect(200);
+    expect((cruzado.body as Array<{ token: string }>).map((c) => c.token)).not.toContain(
+      datos.b.citaToken,
+    );
 
     const dia = await request(srv).get(`/api/citas?fecha=${miercoles}`).set(HA).expect(200);
     expect((dia.body as Array<{ token: string }>).map((c) => c.token)).toEqual(['CIT-RANGO-01']);
@@ -132,6 +142,24 @@ describe('Rango de citas y disponibilidad', () => {
     await request(srv).get(`/api/citas?desde=${lunes}&hasta=${masDias(lunes, 63)}`).set(HA).expect(400);
     await request(srv).get(`/api/citas?fecha=${lunes}&desde=${lunes}`).set(HA).expect(400);
     await request(srv).get(`/api/citas?fecha=no-es-fecha`).set(HA).expect(400);
+    // Fecha imposible o instante con hora: el dominio es una fecha civil y
+    // guardar el instante truncado en UTC cambiaría de día.
+    await request(srv).get('/api/citas?fecha=2026-02-30').set(HA).expect(400);
+    await request(srv)
+      .get(`/api/citas/disponibilidad?fecha=2026-02-30&duracion=30`)
+      .set(HA)
+      .expect(400);
+    await request(srv)
+      .post('/api/citas')
+      .set(HA)
+      .send({
+        pacienteId: datos.a.pacienteId,
+        sedeId: datos.a.sedeId,
+        fecha: `${lunes}T23:00:00-05:00`,
+        horaInicio: '09:00',
+        horaFin: '09:30',
+      })
+      .expect(400);
   });
 
   it('filtros con sede/dentista ajenos → 404; estado desconocido → 400', async () => {
@@ -267,7 +295,35 @@ describe('Rango de citas y disponibilidad', () => {
       .expect(400);
   });
 
-  it('sede/dentista ajenos → 404; sin sesión → 401; duración inválida → 400', async () => {
+  it('acepta la medianoche UTC heredada al crear y actualizar (compatibilidad)', async () => {
+    const srv = app.getHttpServer();
+    // El frontend anterior enviaba `aaaa-mm-ddT00:00:00.000Z`; el mismo día en
+    // UTC. Se sigue aceptando para no romper bundles antiguos en caché.
+    const r = await request(srv)
+      .post('/api/citas')
+      .set(HA)
+      .send({
+        pacienteId: datos.a.pacienteId,
+        sedeId: datos.a.sedeId,
+        fecha: `${lunes}T00:00:00.000Z`,
+        horaInicio: '11:00',
+        horaFin: '11:30',
+      })
+      .expect(201);
+    expect((r.body as { fecha: string }).fecha.slice(0, 10)).toBe(lunes);
+
+    await request(srv)
+      .patch(`/api/citas/${(r.body as { id: string }).id}`)
+      .set(HA)
+      .send({
+        fecha: `${lunes}T00:00:00.000Z`,
+        horaInicio: '11:30',
+        horaFin: '12:00',
+      })
+      .expect(200);
+  });
+
+  it('sede/dentista ajenos → 404; sin sesión → 401; duración fuera de rango → 400', async () => {
     const srv = app.getHttpServer();
     await request(srv)
       .get(`/api/citas/disponibilidad?fecha=${lunes}&duracion=30&sedeId=${datos.b.sedeId}`)
@@ -278,7 +334,18 @@ describe('Rango de citas y disponibilidad', () => {
       .set(HA)
       .expect(404);
     await request(srv).get(`/api/citas/disponibilidad?fecha=${lunes}&duracion=30`).expect(401);
-    await request(srv).get(`/api/citas/disponibilidad?fecha=${lunes}&duracion=10`).set(HA).expect(400);
+    await request(srv).get(`/api/citas/disponibilidad?fecha=${lunes}&duracion=4`).set(HA).expect(400);
+    await request(srv).get(`/api/citas/disponibilidad?fecha=${lunes}&duracion=1441`).set(HA).expect(400);
     await request(srv).get(`/api/citas/disponibilidad?fecha=ayer&duracion=30`).set(HA).expect(400);
+  });
+
+  it('un tratamiento de 10 min (mínimo real) también obtiene rejilla', async () => {
+    // El contrato de tratamientos permite desde 5 min: la rejilla no puede
+    // rechazar esa duración o el formulario se queda sin horas.
+    const r = await request(app.getHttpServer())
+      .get(`/api/citas/disponibilidad?fecha=${lunes}&duracion=10`)
+      .set(HA)
+      .expect(200);
+    expect((r.body as Array<{ horaInicio: string }>)[0]!.horaInicio).toBe('09:00');
   });
 });

@@ -1,18 +1,18 @@
 # Backend — Dental SaaS (multi-tenant)
 
-Estado: **Fase 1 en preparación**. Este directorio contiene por ahora los cimientos
-verificables: el esquema de datos multi-tenant validado y el contrato de pruebas de
-aislamiento. La aplicación NestJS se implementa en la Fase 1.
+API NestJS + Prisma/PostgreSQL del SaaS dental multi-tenant. El esquema, los
+módulos de negocio y la suite e2e de aislamiento y contratos viven en este
+directorio. La aplicación arranca desde `src/main.ts` compilado a `dist/`.
 
 ## Contenido
 
 | Ruta | Qué es |
 |---|---|
-| `prisma/schema.prisma` | Esquema multi-tenant completo (37 modelos/tablas). Validado con Prisma 7.10.0 |
-| `prisma/migrations/0_init/migration.sql` | DDL inicial generado (738 líneas) |
+| `prisma/schema.prisma` | Esquema multi-tenant completo (43 modelos/tablas). Validado con Prisma 7.10.0 |
+| `prisma/migrations/` | 10 migraciones, desde `0_init` hasta `8_quitar_ubigeo_paciente` |
 | `prisma.config.ts` | Configuración de Prisma (la `url` ya no va en el schema en Prisma 7) |
 | `test/helpers/tenants-fixture.ts` | Fixture de dos tenants (A y B) con datos completos |
-| `test/aislamiento.e2e-spec.ts` | Spec de aislamiento multi-tenant (criterio de salida de Fase 1) |
+| `test/*.e2e-spec.ts` | 27 specs e2e sobre PostgreSQL real: aislamiento, contratos, agenda, etc. |
 | `vitest.config.e2e.ts` | Runner de las pruebas e2e |
 
 ## Comandos
@@ -21,7 +21,8 @@ aislamiento. La aplicación NestJS se implementa en la Fase 1.
 npm install
 npm run db:validate       # valida el esquema
 npm run db:migrate        # aplica migraciones (requiere DATABASE_URL)
-npm run test:aislamiento  # ejecuta las pruebas de aislamiento
+npm run test:aislamiento  # e2e: requiere DATABASE_URL de dental_saas_test y JWT_SECRET
+npm run build             # compila a dist/
 ```
 
 ## Estado de verificaciones
@@ -29,14 +30,16 @@ npm run test:aislamiento  # ejecuta las pruebas de aislamiento
 | Verificación | Estado |
 |---|---|
 | `prisma validate` | ✅ válido |
-| `prisma format` | ✅ sin cambios estructurales |
-| DDL generado | ✅ 37 tablas, 738 líneas |
-| `test:aislamiento` | ⏳ se activa al implementar `src/app.module.ts` (Fase 1) |
+| `tsc --noEmit` | ✅ sin errores |
+| `build` | ✅ |
+| `test:aislamiento` | ✅ 27 archivos / 278 pruebas (PostgreSQL 16 en 5433) |
 
 ## Variables de entorno
 
-Ver `prisma.config.ts` y `.env`. Requeridas: `DATABASE_URL`.
-En Fase 1 se añaden además `JWT_SECRET`, `FRONTEND_URL`, `PORT` y las de Google/Supabase.
+Ver `prisma.config.ts` y `.env`. Para desarrollo: `DATABASE_URL`.
+Para la suite e2e: `DATABASE_URL` apuntando a `dental_saas_test` (nunca a
+`dental_saas_dev`) y `JWT_SECRET`; el comando exacto está en
+[`docs/como-probar.md`](../docs/como-probar.md), sección 7.
 
 ## Documentación
 

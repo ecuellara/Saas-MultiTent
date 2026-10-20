@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Injectable, Module, NotFoundException } from '@nestjs/common';
-import { IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
@@ -29,8 +29,9 @@ export class CreateTratamientoDto {
 
   @ApiPropertyOptional({ example: 45 })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(5)
+  @Max(1440)
   duracionMin?: number;
 }
 
@@ -65,8 +66,9 @@ export class UpdateTratamientoDto {
 
   @ApiPropertyOptional({ example: 45 })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(5)
+  @Max(1440)
   duracionMin?: number;
 
   @ApiPropertyOptional()
