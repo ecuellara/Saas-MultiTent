@@ -375,10 +375,10 @@ reconstruye con las partes UTC de la fecha (columnas `@db.Date`) y la hora indic
 - El mensaje nombra la franja (`... la franja 2026-10-05 11:00 ya pasó`) para que no
   haya que deducir a qué se refiere.
 
-Orden de las validaciones en `crear`: rango → **pasado** → paciente/tratamiento/sede
-→ horario y descansos → solapamiento. Lo primero que se comprueba es lo que el
-usuario necesita leer: antes, intentar agendar para una hora ya pasada devolvía «El
-consultorio no atiende el día dom» y ocultaba el motivo real.
+Orden de las validaciones en `crear`: pertenencia de sede/odontólogo → paciente →
+tratamiento → rango → **pasado** → horario y descansos → solapamiento. Las FKs se
+verifican primero (404 si son ajenas); dentro de la franja, «pasado» va antes que el
+horario para no ocultar el motivo real con «El consultorio no atiende el día dom».
 
 ### Trampa: un cuerpo declarado como objeto literal no se valida
 
@@ -648,7 +648,6 @@ model Ubigeo {
   departamento String
   provincia    String
   distrito     String
-  pacientes    Paciente[]
 
   @@index([departamento, provincia])
 }

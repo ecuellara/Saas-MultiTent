@@ -448,16 +448,18 @@ Falta conciliar contra nuestro registro:
 > **Retirado (2026-10-14): el ubigeo del paciente.** Aquí figuraba la deuda 18 («catálogo
 > de ubigeos vacío»). Se cierra **retirando la funcionalidad, no cargando datos**:
 > `Paciente.ubigeoCodigo` era una columna heredada del DDL del proyecto antiguo, el
-> catálogo nunca se cargó y **nada lo leía** (ni el consentimiento, ni los informes, ni
-> ninguna exportación). Como el formulario lo enviaba como texto libre contra una clave
-> foránea, cualquier código producía P2003 → «Referencia inválida» al guardar: el mismo
-> error que ya ocurría en el sistema antiguo, donde lo resolvían excluyendo el campo del
-> payload.
+> catálogo nunca se cargó y **ningún flujo de negocio dependía de él** (solo se
+> mostraba en la ficha del paciente; ni el consentimiento, ni los informes, ni
+> ninguna exportación lo usaban). Como el formulario lo enviaba como texto libre
+> contra una clave foránea, cualquier código producía P2003 → «Referencia inválida»
+> al guardar: el mismo error que ya ocurría en el sistema antiguo, donde lo
+> resolvían excluyendo el campo del payload.
 >
 > Se eliminó la columna, su clave foránea, el módulo `ubigeo` y su campo en el formulario
 > (migración `8_quitar_ubigeo_paciente`). **La tabla `Ubigeo` se conserva** —catálogo
 > oficial del Perú, sin filas— por si algún día se quiere un selector de
-> departamento/provincia/distrito: usarla no requeriría ninguna migración.
+> departamento/provincia/distrito: recuperarlo exigiría cargar el catálogo y volver a
+> añadir la columna y su FK en `Paciente` (una migración nueva).
 
 ---
 

@@ -186,7 +186,7 @@ $env:JWT_SECRET   = "secreto-de-pruebas-de-al-menos-32-caracteres-ok"
 npx vitest run --config vitest.config.e2e.ts
 ```
 
-Son **183 pruebas** sobre una base de datos real (usan `dental_saas_test`, no
+Son **278 pruebas** sobre una base de datos real (usan `dental_saas_test`, no
 `dental_saas_dev`: no se pisan con tu entorno de desarrollo).
 
 Frontend:
