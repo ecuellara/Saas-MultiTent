@@ -1,4 +1,4 @@
-﻿# Deuda tÃ©cnica â€” Dental SaaS
+# Deuda tÃ©cnica â€” Dental SaaS
 
 > **Estado:** registro vivo. Ãšltima actualizaciÃ³n: octubre 2026.
 > **Regla:** este documento no es una lista de deseos. Cada entrada tiene un motivo
