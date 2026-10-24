@@ -1,11 +1,11 @@
 # Lanzamiento: puesta en producción
 
 > Lista de pasos de cierre de producción con su criterio de «hecho» de cada uno.
-> Fuentes: [AGENTS.md](../AGENTS.md) §8, [render-vercel-supabase.md](render-vercel-supabase.md),
+> Fuentes: [AGENTS.md](../AGENTS.md) §8, [render-cloudflare-supabase.md](render-cloudflare-supabase.md),
 > [despliegue.md](despliegue.md), [izipay-suscripcion.md](izipay-suscripcion.md),
 > [deuda-tecnica.md](deuda-tecnica.md) y [backups.md](backups.md).
 >
-> **Estado general:** nada de esto está confirmado todavía. `render-vercel-supabase.md`
+> **Estado general:** nada de esto está confirmado todavía. `render-cloudflare-supabase.md`
 > §6 declara que aún **no hay URLs ni proyectos remotos creados/verificados**:
 > Render, Vercel y Supabase figuran como «no creado/verificado» y las seis
 > verificaciones remotas están «pendientes». Los comandos y SQL de abajo se toman
@@ -17,7 +17,7 @@
 ## 1. Seed y permiso `billing.manage` en Render
 
 **Acciones** (después del despliegue: build → pre-deploy `npm run deploy:migrate`,
-en ese orden — `render-vercel-supabase.md` §2), en el **Shell de Render**:
+en ese orden — `render-cloudflare-supabase.md` §2), en el **Shell de Render**:
 
 ```sh
 npm run deploy:seed
@@ -49,7 +49,7 @@ en producción): el ADMIN de la clínica lo recibe sin pasos extra.
 
 ⚠️ **AVISO:** no se puede confirmar que el seed se haya ejecutado en Render, ni
 que exista owner de plataforma o clínica de alta remota (tabla del §6 de
-`render-vercel-supabase.md`: «Pendiente de seed/owner remoto»). Este paso queda
+`render-cloudflare-supabase.md`: «Pendiente de seed/owner remoto»). Este paso queda
 sin verificar hasta tener la URL real y acceso al Shell de Render.
 
 ⚠️ **AVISO:** la documentación no incluye una consulta SQL literal para comprobar
@@ -62,7 +62,7 @@ sin verificar hasta tener la URL real y acceso al Shell de Render.
 ## 2. Pago real del sandbox de Izipay y periodo extendido
 
 **Acciones** (aceptación pendiente descrita en `izipay-suscripcion.md`
-§«Aceptación pendiente: sandbox real»; verificación 5 de `render-vercel-supabase.md`):
+§«Aceptación pendiente: sandbox real»; verificación 5 de `render-cloudflare-supabase.md`):
 
 Con las cinco variables TEST configuradas en Render (`IZIPAY_BASE_URL`,
 `IZIPAY_SHOP_ID`, `IZIPAY_CLAVE`, `IZIPAY_CLAVE_HMAC`, `IZIPAY_PUBLIC_KEY`):
@@ -98,7 +98,7 @@ el replay + el byte alterado se comportan como está especificado.
 ⚠️ **AVISO:** solo se confirmó parcialmente con credenciales TEST
 (`CreatePayment` → HTTP 200, `status: SUCCESS`, formToken válido). **Toda esta
 comprobación sigue pendiente**: pago real, entrega pública del IPN, conciliación
-y replay (tabla del §6 de `render-vercel-supabase.md`: «Pendiente de URL pública
+y replay (tabla del §6 de `render-cloudflare-supabase.md`: «Pendiente de URL pública
 y Back Office»). «Pasar la página de resultado» no es evidencia: el único
 medio de confirmar es el webhook público observado realmente.
 
@@ -124,7 +124,7 @@ aquí lo observado.
 
 ## 3. Las cuatro comprobaciones de producción
 
-Del §4 de `render-vercel-supabase.md`. Se necesita la sesión de plataforma/
+Del §4 de `render-cloudflare-supabase.md`. Se necesita la sesión de plataforma/
 clínica del paso 1, y `DOCUMENTO_ID` de 3.c para el paso 3.b.
 
 ### 3.a Sesión tras quince minutos
@@ -199,13 +199,13 @@ evidencia (no dárselo por hecho).
 
 ⚠️ **AVISO:** la generación del PDF 10 486 379 bytes con cabecera PDF está
 comprobada localmente, pero **la subida remota sigue pendiente de medida**
-(literal de `render-vercel-supabase.md` §4.4): el límite ~4.5 MB de las
+(literal de `render-cloudflare-supabase.md` §4.4): el límite ~4.5 MB de las
 Functions de Vercel no demuestra el de sus rewrites.
 
 ### 3.d TRUST_PROXY comprobado con la IP de auditoría
 
 **Acción:** valor **2** esperado por la cadena navegador → Vercel → Render →
-app, **1** para la IPN o una subida directa (render-vercel-supabase.md §2).
+app, **1** para la IPN o una subida directa (render-cloudflare-supabase.md §2).
 El valor lo pide el panel de Render, no lo inventa el Blueprint. Antes de
 aceptar el despliegue:
 
@@ -243,7 +243,7 @@ comparar en las mutaciones críticas que sí la registran.
 
 ### 4.a Copias de Supabase
 
-**Acciones** (`render-vercel-supabase.md` §1 y §5, `backups.md`):
+**Acciones** (`render-cloudflare-supabase.md` §1 y §5, `backups.md`):
 
 1. Elegir plan con **copias diarias/PITR** (el Free puede pausarse por
    inactividad y **no** incluye respaldo recuperable). Configurar el plan del
@@ -293,7 +293,7 @@ npm run vigilancia
 2. Conectar el canal real: los timers systemd activan `dental-saas-aviso@.service`,
    que si existe llama a `/etc/dental-saas/avisos.sh` — ahí es donde conecta el
    canal del equipo (correo/webhook). En Render **no hay timers systemd ni Cron
-   Jobs** (render-vercel-supabase.md §5), así que hay que definir un
+   Jobs** (render-cloudflare-supabase.md §5), así que hay que definir un
    equivalente (p. ej. servicio externo con `DIRECT_URL` y la imagen de
    operaciones que corra la vigilancia/copia) o asumir chequeo manual.
 3. Operación programada en un servidor propio (si aplica, `despliegue.md` §5.1):
@@ -325,7 +325,7 @@ en producción y probar de verdad que el aviso llega a alguien.
 El lanzamiento se da por completado solo cuando:
 
 - Los cuatro pasos tienen su evidencia registrada en el acta del §6 de
-  `render-vercel-supabase.md` en lugar de «Pendiente».
+  `render-cloudflare-supabase.md` en lugar de «Pendiente».
 - La clínica real ya puede darse de alta desde el panel y empezar de cero
   (primer día guiado en [primeros-pasos-clinica.md](primeros-pasos-clinica.md));
   el «ensayo de migración» solo aplica si una clínica trae datos

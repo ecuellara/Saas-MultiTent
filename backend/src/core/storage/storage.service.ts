@@ -1,6 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 
 /**
  * Storage multi-tenant (doc §9).
@@ -69,12 +75,16 @@ export class StorageService {
   }
 
   /**
-   * Proveedor activo. `local` (disco, por defecto: desarrollo y pruebas) o
-   * `supabase` (Supabase Storage, producción). En Render el disco es efímero:
-   * los archivos se perderían en cada despliegue, así que producción usa bucket.
+   * Proveedor activo. `local` (disco, por defecto: desarrollo y pruebas),
+   * `supabase` (Supabase Storage) o `r2` (Cloudflare R2, S3-API). En Render el
+   * disco es efímero: los archivos se perderían en cada despliegue, así que
+   * producción usa bucket.
    */
-  get driver(): 'local' | 'supabase' {
-    return process.env.STORAGE_DRIVER === 'supabase' ? 'supabase' : 'local';
+  get driver(): 'local' | 'supabase' | 'r2' {
+    const valor = process.env.STORAGE_DRIVER;
+    if (valor === 'supabase') return 'supabase';
+    if (valor === 'r2') return 'r2';
+    return 'local';
   }
 
   /**
@@ -91,6 +101,44 @@ export class StorageService {
     return { url: url.replace(/\/$/, ''), key, bucket };
   }
 
+  /**
+   * Configuración de Cloudflare R2. Misma regla: falla al usarlo nombrando la
+   * variable que falta. Credenciales de API de R2 (`S3 Access Key`), región
+   * fija `auto` como exige R2 y endpoint propio de la cuenta.
+   */
+  private configuracionR2(): {
+    accountId: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    bucket: string;
+  } {
+    const accountId = process.env.R2_ACCOUNT_ID;
+    const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+    const bucket = process.env.R2_BUCKET;
+    if (!accountId) throw new Error('Falta R2_ACCOUNT_ID (necesaria con STORAGE_DRIVER=r2)');
+    if (!accessKeyId) throw new Error('Falta R2_ACCESS_KEY_ID (necesaria con STORAGE_DRIVER=r2)');
+    if (!secretAccessKey)
+      throw new Error('Falta R2_SECRET_ACCESS_KEY (necesaria con STORAGE_DRIVER=r2)');
+    if (!bucket) throw new Error('Falta R2_BUCKET (necesaria con STORAGE_DRIVER=r2)');
+    return { accountId, accessKeyId, secretAccessKey, bucket };
+  }
+
+  private clienteR2: S3Client | null = null;
+
+  /** Instancia perezosa del cliente S3 apuntando a R2 (se crea al primer uso). */
+  private s3R2(): S3Client {
+    if (!this.clienteR2) {
+      const { accountId, accessKeyId, secretAccessKey } = this.configuracionR2();
+      this.clienteR2 = new S3Client({
+        region: 'auto',
+        endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+        credentials: { accessKeyId, secretAccessKey },
+      });
+    }
+    return this.clienteR2;
+  }
+
   private urlObjeto(storageKey: string): string {
     const { url, bucket } = this.configuracionSupabase();
     const ruta = storageKey.split('/').map(encodeURIComponent).join('/');
@@ -105,11 +153,19 @@ export class StorageService {
   /**
    * Escribe el contenido de un archivo del tenant en el proveedor activo.
    *
-   * La clave la construye SIEMPRE el servidor (`construirClave`) y aquí se
-   * revalida el prefijo del tenant **antes** de escribir, en los dos proveedores.
+    * La clave la construye SIEMPRE el servidor (`construirClave`) y aquí se
+   * revalida el prefijo del tenant **antes** de escribir, en los tres
+   * proveedores.
    */
   async guardar(tenantId: string, storageKey: string, contenido: Buffer): Promise<void> {
     this.assertClaveTenant(tenantId, storageKey);
+    if (this.driver === 'r2') {
+      const { bucket } = this.configuracionR2();
+      await this.s3R2().send(
+        new PutObjectCommand({ Bucket: bucket, Key: storageKey, Body: contenido }),
+      );
+      return;
+    }
     if (this.driver === 'supabase') {
       const respuesta = await fetch(this.urlObjeto(storageKey), {
         method: 'POST',
@@ -135,6 +191,11 @@ export class StorageService {
    * cuando la escritura tuvo éxito pero la fila en base de datos no se creó).
    */
   async eliminar(storageKey: string): Promise<void> {
+    if (this.driver === 'r2') {
+      const { bucket } = this.configuracionR2();
+      await this.s3R2().send(new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }));
+      return;
+    }
     if (this.driver === 'supabase') {
       const respuesta = await fetch(this.urlObjeto(storageKey), {
         method: 'DELETE',
@@ -154,6 +215,26 @@ export class StorageService {
    */
   async leer(tenantId: string, storageKey: string): Promise<Buffer> {
     this.assertClaveTenant(tenantId, storageKey);
+    if (this.driver === 'r2') {
+      const { bucket } = this.configuracionR2();
+      try {
+        const respuesta = await this.s3R2().send(
+          new GetObjectCommand({ Bucket: bucket, Key: storageKey }),
+        );
+        const cuerpo = await respuesta.Body?.transformToByteArray();
+        if (!cuerpo) throw new NotFoundException('Documento no encontrado');
+        return Buffer.from(cuerpo);
+      } catch (error) {
+        if (error instanceof NotFoundException) throw error;
+        const codigo = (error as { name?: string; Code?: string }).name;
+        const httpEstado = (error as { $metadata?: { httpStatusCode?: number } }).$metadata
+          ?.httpStatusCode;
+        if (codigo === 'NoSuchKey' || httpEstado === 404) {
+          throw new NotFoundException('Documento no encontrado');
+        }
+        throw error;
+      }
+    }
     if (this.driver === 'supabase') {
       const respuesta = await fetch(this.urlObjeto(storageKey), { headers: this.cabecerasSupabase() });
       if (!respuesta.ok) throw new NotFoundException('Documento no encontrado');

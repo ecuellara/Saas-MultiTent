@@ -96,6 +96,7 @@ Reglas de esa cadena:
 | 400 «Referencia inválida» al guardar | Un campo de texto libre que en realidad es una **clave foránea**: valida antes de escribir, con mensaje claro. (Pasó con el ubigeo, ya retirado) |
 | «No se puede agendar en el pasado» al editar | Correcto: la regla del pasado se aplica al reprogramar. Las citas del seed están en fechas fijas del pasado |
 | El seed falla solo en ejecución | Una línea fusionada o un import roto en `prisma/seed*.ts`: `tsc` no los cubre |
+| La suite falla en varios ficheros con «Foreign key constraint violated» **en una limpieza** | Una corrida anterior se cortó y dejó filas huérfanas (p. ej. una suscripción apuntando a un plan que otro spec borra). Rehacer la base de pruebas (`DROP DATABASE … WITH (FORCE)` + `CREATE` + `migrate deploy`) y repetir; no es tu código |
 
 ## 5. Antes de confirmar (checklist)
 
