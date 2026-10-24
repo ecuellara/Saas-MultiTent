@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import api from '../services/api'
+import { avisarCierreSesion } from '../services/canal-sesion'
 import { mensajeDeError } from '../services/errores'
 
 export interface Usuario {
@@ -139,13 +140,22 @@ export const useSessionStore = defineStore('session', {
     },
 
     async cerrarSesion(): Promise<void> {
-      try {
-        // `silencioso`: si el servidor falla, la sesión local se cierra igual.
-        await api.post('/auth/logout', {}, { silencioso: true })
-      } catch {
-        // Intencionadamente ignorado.
-      }
+      // Cierre local y aviso a las demás pestañas ANTES de hablar con el
+      // servidor: el usuario debe salir al instante aunque la red tarde. El
+      // token se captura porque `limpiar` lo borra de localStorage.
+      const token = this.token
       this.limpiar()
+      avisarCierreSesion()
+      // `silencioso`: si el servidor falla, la sesión local ya está cerrada.
+      void api
+        .post(
+          '/auth/logout',
+          {},
+          { silencioso: true, headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        )
+        .catch(() => {
+          // Intencionadamente ignorado.
+        })
     },
 
     limpiar(): void {

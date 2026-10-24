@@ -3,6 +3,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePlataformaStore } from './stores/plataforma'
 import { useSessionStore } from './stores/session'
+import ControlInactividad from './components/layout/ControlInactividad.vue'
 
 /**
  * Raíz de la aplicación.
@@ -53,4 +54,5 @@ onUnmounted(() => {
 
 <template>
   <RouterView :key="$route.name === 'login' ? 'login' : 'app'" />
+  <ControlInactividad />
 </template>

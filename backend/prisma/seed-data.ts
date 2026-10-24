@@ -92,23 +92,43 @@ export const PLANES_BASE: PlanSeed[] = [
   {
     codigo: 'consultorio',
     nombre: 'Consultorio',
-    descripcion: 'Una sede, hasta 5 usuarios.',
-    precioMensual: 99,
+    descripcion: 'Una sede, 1 odontologo y hasta 2 usuarios.',
+    precioMensual: 79,
+    features: [
+      { clave: 'multi_sede', habilitado: false, limite: null },
+      { clave: 'max_sedes', habilitado: true, limite: 1 },
+      { clave: 'max_usuarios', habilitado: true, limite: 2 },
+      { clave: 'max_odontologos', habilitado: true, limite: 1 },
+    ],
+  },
+  {
+    codigo: 'profesional',
+    nombre: 'Profesional',
+    descripcion: 'Una sede, hasta 3 odontologos y 5 usuarios.',
+    precioMensual: 149,
     features: [
       { clave: 'multi_sede', habilitado: false, limite: null },
       { clave: 'max_sedes', habilitado: true, limite: 1 },
       { clave: 'max_usuarios', habilitado: true, limite: 5 },
+      { clave: 'max_odontologos', habilitado: true, limite: 3 },
     ],
   },
   {
     codigo: 'clinica',
-    nombre: 'Clínica',
-    descripcion: 'Multi-sede, hasta 20 usuarios.',
+    nombre: 'Clinica',
+    descripcion: 'Hasta 3 sedes, 8 odontologos y 15 usuarios.',
     precioMensual: 249,
     features: [
       { clave: 'multi_sede', habilitado: true, limite: null },
       { clave: 'max_sedes', habilitado: true, limite: 3 },
-      { clave: 'max_usuarios', habilitado: true, limite: 20 },
+      { clave: 'max_usuarios', habilitado: true, limite: 15 },
+      { clave: 'max_odontologos', habilitado: true, limite: 8 },
     ],
   },
 ];
+
+export {
+  PLANTILLAS_CONSENTIMIENTO,
+  sembrarPlantillasConsentimiento,
+  type PlantillaConsentimientoSeed,
+} from '../src/core/catalogo/consentimientos.js';

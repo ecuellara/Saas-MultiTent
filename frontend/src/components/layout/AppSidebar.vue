@@ -37,9 +37,9 @@ async function salir(): Promise<void> { await sesion.cerrarSesion(); await route
 </script>
 
 <template>
-  <aside class="flex h-full w-64 shrink-0 flex-col border-r border-line bg-background/95 shadow-[12px_0_40px_-28px_rgba(7,86,163,.65)] backdrop-blur-xl">
+  <aside class="flex h-screen w-64 shrink-0 flex-col overflow-hidden border-r border-line bg-background/95 shadow-[12px_0_40px_-28px_rgba(7,86,163,.65)] backdrop-blur-xl">
     <!-- Marca / clínica activa -->
-    <div class="border-b border-line px-4 py-5">
+    <div class="shrink-0 border-b border-line px-4 py-5">
       <div class="mb-4 flex items-center gap-3"><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary"><img src="/favicon.svg" class="h-7 w-7" alt="" /></div><div class="min-w-0"><p class="text-xs font-semibold uppercase tracking-[.18em] text-muted">Dental SaaS</p><p class="truncate text-sm font-semibold text-ink">Gestión clínica</p></div><button class="ml-auto rounded-lg p-1.5 text-muted hover:bg-background-soft md:hidden" @click="emit('cerrar')"><XMarkIcon class="h-5 w-5" /></button></div>
       <p class="truncate text-sm font-semibold text-ink" :title="sesion.clinicaActiva?.nombre">
         {{ sesion.clinicaActiva?.nombre ?? 'Clínica' }}
@@ -59,7 +59,7 @@ async function salir(): Promise<void> { await sesion.cerrarSesion(); await route
     </div>
 
     <!-- Navegación -->
-    <nav class="flex-1 overflow-y-auto px-3 py-4">
+    <nav class="min-h-0 flex-1 overflow-y-auto px-3 py-4">
       <div v-for="seccion in secciones" :key="seccion.nombre" class="mb-5">
       <p class="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[.2em] text-muted">{{ seccion.nombre }}</p>
       <RouterLink
@@ -78,7 +78,7 @@ async function salir(): Promise<void> { await sesion.cerrarSesion(); await route
     </nav>
 
     <!-- Usuario -->
-    <div class="border-t border-line px-4 py-4">
+    <div class="shrink-0 border-t border-line px-4 py-4">
       <p class="truncate text-sm font-medium text-ink">{{ sesion.usuario?.nombre }}</p>
       <p class="truncate text-xs text-muted" :title="sesion.usuario?.email">
         {{ sesion.usuario?.email }}

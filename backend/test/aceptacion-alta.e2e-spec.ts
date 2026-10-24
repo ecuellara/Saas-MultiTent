@@ -220,13 +220,18 @@ describe('Aceptación del alta: el primer día del primer cliente', () => {
 
   // ------------------------------------ 3. primer arranque: agenda permisiva
 
-  it('sin horario la agenda acepta cualquier hora; los catálogos están vacíos', async () => {
+  it('sin horario la agenda acepta cualquier hora; los catálogos clínicos están vacíos', async () => {
     const tratamientos = await http().get('/api/tratamientos').set(HD).expect(200);
     expect(tratamientos.body).toHaveLength(0);
     const especialidades = await http().get('/api/especialidades').set(HD).expect(200);
     expect(especialidades.body).toHaveLength(0);
+    // El alta siembra las 15 plantillas de consentimiento heredadas del sistema
+    // anterior, con su texto literal: la clinica nace lista para firmar.
     const plantillas = await http().get('/api/consentimientos/plantillas').set(HD).expect(200);
-    expect(plantillas.body).toHaveLength(0);
+    expect(plantillas.body).toHaveLength(15);
+    expect(plantillas.body.map((p: { clave: string }) => p.clave)).toEqual(
+      expect.arrayContaining(['apicectomia', 'endodoncia', 'implantes', 'ortodoncia']),
+    );
 
     // Hace falta UN paciente para probar la agenda (no es catálogo).
     const pac = await http()

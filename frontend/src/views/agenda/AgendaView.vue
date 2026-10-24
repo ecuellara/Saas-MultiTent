@@ -65,7 +65,7 @@ const VISTAS: Array<{ valor: VistaAgenda; etiqueta: string }> = [
   { valor: 'mes', etiqueta: 'Mes' },
 ]
 
-const vista = ref<VistaAgenda>('dia')
+const vista = ref<VistaAgenda>('mes')
 const fecha = ref(hoyLima())
 const filtros = reactive({ sedeId: '', dentistaId: '', estado: '' })
 

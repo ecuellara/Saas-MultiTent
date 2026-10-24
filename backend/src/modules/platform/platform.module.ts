@@ -16,6 +16,7 @@ import {
 } from '../../core/auth/rate-limit.js';
 import { PermitirAltaMfa, PlatformGuard, PlatformRoles } from '../../core/guards/platform.guard.js';
 import { EntitlementsService } from '../../core/entitlements/entitlements.service.js';
+import { sembrarPlantillasConsentimiento } from '../../core/catalogo/consentimientos.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { LoginDto } from '../auth/login.dto.js';
 import { CATALOGO_PERMISOS } from '../../core/catalogo/permisos.js';
@@ -611,6 +612,10 @@ export class PlatformService {
           user: { create: (a: unknown) => Promise<{ id: string; email: string }> };
           membership: { create: (a: unknown) => Promise<unknown> };
           plantillaWhatsApp: { createMany: (a: unknown) => Promise<unknown> };
+          consentimientoPlantilla: {
+            findUnique: (a: unknown) => Promise<{ id: string } | null>;
+            create: (a: unknown) => Promise<unknown>;
+          };
           subscription: { create: (a: unknown) => Promise<unknown> };
         };
         const tenant = await t.tenant.create({
@@ -663,6 +668,8 @@ export class PlatformService {
             activo: true,
           })),
         });
+        // Plantillas de consentimiento heredadas (idempotente, no pisa ediciones).
+        await sembrarPlantillasConsentimiento(t, tenant.id);
         await t.subscription.create({
           data: {
             tenantId: tenant.id,

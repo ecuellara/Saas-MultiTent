@@ -13,7 +13,7 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { CATALOGO_PERMISOS, PLANES_BASE, sembrarCatalogoHallazgos } from './seed-data.js';
+import { CATALOGO_PERMISOS, PLANES_BASE, sembrarCatalogoHallazgos, sembrarPlantillasConsentimiento } from './seed-data.js';
 
 async function main(): Promise<void> {
   const email = process.env.PLATFORM_OWNER_EMAIL;
@@ -69,6 +69,13 @@ async function main(): Promise<void> {
       console.log(`PlatformUser owner creado: ${email}`);
     } else {
       console.log(`PlatformUser ya existe: ${email} (sin cambios)`);
+    }
+    // Plantillas de consentimiento para las clinicas que ya existen (las nuevas
+    // las reciben en el alta). Idempotente: no pisa las editadas.
+    const clinicas = await prisma.tenant.findMany({ select: { id: true, nombre: true } });
+    for (const clinica of clinicas) {
+      const creadas = await sembrarPlantillasConsentimiento(prisma, clinica.id);
+      if (creadas > 0) console.log(`Plantillas de consentimiento para ${clinica.nombre}: ${creadas}`);
     }
     console.log('Seed OK');
   } finally {
