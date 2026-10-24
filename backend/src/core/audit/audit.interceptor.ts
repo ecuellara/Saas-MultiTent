@@ -384,10 +384,19 @@ export class AuditInterceptor implements NestInterceptor {
       if (profundidad >= MAX_PROFUNDIDAD) return '[PROFUNDIDAD_MAXIMA]';
       return valor.slice(0, 100).map((v) => this.redactar(v, profundidad + 1));
     }
+    // Un Buffer (o cualquier vista tipada) NO es un array: sin esta rama, la
+    // subida de un archivo de 11 MB se recorre byte a byte —millones de claves—
+    // y tumba la petición con un 500. Se resume a un marcador con el tamaño.
+    if (Buffer.isBuffer(valor) || ArrayBuffer.isView(valor)) {
+      const bytes = (valor as { byteLength?: number }).byteLength ?? 0;
+      return `[BINARIO ${bytes} bytes]`;
+    }
     if (typeof valor === 'object') {
       if (profundidad >= MAX_PROFUNDIDAD) return '[PROFUNDIDAD_MAXIMA]';
       const salida: { [clave: string]: JsonRedactado } = {};
-      for (const [clave, v] of Object.entries(valor as Record<string, unknown>)) {
+      // Tope de claves por objeto: un objeto enorme tampoco debe poder tumbar la
+      // auditoría. La política es no serializar más de lo razonable.
+      for (const [clave, v] of Object.entries(valor as Record<string, unknown>).slice(0, 200)) {
         salida[clave] = this.esSensible(clave) ? REDACTADO : this.redactar(v, profundidad + 1);
       }
       return salida;

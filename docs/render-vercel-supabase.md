@@ -337,3 +337,32 @@ Estos resultados no sustituyen las seis comprobaciones remotas de la tabla.
 - [Vercel rewrites y caché](https://vercel.com/docs/rewrites)
 - [Supabase conexiones](https://supabase.com/docs/guides/database/connecting-to-postgres)
 - [Supabase backups por plan](https://supabase.com/docs/guides/platform/backups)
+
+---
+
+## Almacenamiento de documentos (Supabase Storage)
+
+En Render el disco es **efímero**: los documentos subidos se borran en cada
+despliegue. Por eso producción guarda en un bucket de Supabase, que sí es
+persistente y entra en el plan gratuito.
+
+1. Supabase → **Storage** → *New bucket* → nombre `documentos` → **privado**
+   (el backend lo sirve con su clave; nunca debe ser público).
+2. Copia la **service role key** (Settings → API). Es un secreto: solo en la
+   configuración de Render, nunca en el repositorio.
+3. Variables en Render:
+
+   | Variable | Valor |
+   |---|---|
+   | `STORAGE_DRIVER` | `supabase` |
+   | `SUPABASE_URL` | `https://<ref>.supabase.co` |
+   | `SUPABASE_SERVICE_ROLE_KEY` | la clave del paso 2 |
+   | `SUPABASE_STORAGE_BUCKET` | `documentos` |
+
+4. Redespliega y sube un documento: debe aparecer en el bucket y **seguir ahí
+   después de un redespliegue**.
+
+Si falta alguna variable, la API falla al usar el almacenamiento nombrando la
+que falta (no arranca con un valor por defecto silencioso). Sin
+`STORAGE_DRIVER=supabase` se usa el disco local, que es lo correcto en
+desarrollo y en las pruebas.

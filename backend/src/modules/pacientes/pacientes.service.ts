@@ -239,7 +239,7 @@ export class PacientesService {
       `${randomUUID()}-${nombreSeguro}`,
     );
 
-    await this.storage.escribirLocal(ctx.tenantId, storageKey, archivo.buffer);
+    await this.storage.guardar(ctx.tenantId, storageKey, archivo.buffer);
 
     try {
       return await this.db.documentoPaciente.create({
@@ -269,7 +269,7 @@ export class PacientesService {
       // Compensación: el archivo ya está en disco, así que si la fila no se crea
       // quedaría huérfano (defecto que ya se detectó en la auditoría inicial del
       // proyecto). Se borra y se propaga el error original.
-      await this.storage.eliminarLocal(storageKey).catch(() => undefined);
+      await this.storage.eliminar(storageKey).catch(() => undefined);
       throw e;
     }
   }

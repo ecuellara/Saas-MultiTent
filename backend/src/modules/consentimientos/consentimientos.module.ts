@@ -392,7 +392,7 @@ export class ConsentimientosService {
       rol,
       `${randomUUID()}.${detectado === 'image/png' ? 'png' : 'jpg'}`,
     );
-    await this.storage.escribirLocal(ctx.tenantId, storageKey, archivo.buffer);
+    await this.storage.guardar(ctx.tenantId, storageKey, archivo.buffer);
     try {
       return (await this.db.consentimientoFirmado.update({
         where: { id },
@@ -408,7 +408,7 @@ export class ConsentimientosService {
       } as unknown as object)) as unknown as Record<string, unknown>;
     } catch (e) {
       // Compensación: sin fila, el archivo quedaría huérfano.
-      await this.storage.eliminarLocal(storageKey).catch(() => undefined);
+      await this.storage.eliminar(storageKey).catch(() => undefined);
       throw e;
     }
   }
@@ -430,18 +430,8 @@ export class ConsentimientosService {
     ) as string | null;
     if (!key) throw new NotFoundException('Firma no encontrada');
     this.storage.assertClaveTenant(ctx.tenantId, key);
-    let ruta: string;
-    try {
-      ruta = this.storage.rutaLocal(key);
-    } catch {
-      throw new NotFoundException('Firma no encontrada');
-    }
-    let contenido: Buffer;
-    try {
-      contenido = await readFile(ruta);
-    } catch {
-      throw new NotFoundException('Firma no encontrada');
-    }
+    // `leer` resuelve el proveedor activo (disco o Supabase) y lanza 404 si falta.
+    const contenido = await this.storage.leer(ctx.tenantId, key);
     const detectado = this.storage.firmarMime(contenido);
     if (detectado !== 'image/png' && detectado !== 'image/jpeg') {
       // eslint-disable-next-line no-console

@@ -69,26 +69,101 @@ export class StorageService {
   }
 
   /**
-   * Escribe el contenido de un archivo del tenant en el proveedor local.
+   * Proveedor activo. `local` (disco, por defecto: desarrollo y pruebas) o
+   * `supabase` (Supabase Storage, producción). En Render el disco es efímero:
+   * los archivos se perderían en cada despliegue, así que producción usa bucket.
+   */
+  get driver(): 'local' | 'supabase' {
+    return process.env.STORAGE_DRIVER === 'supabase' ? 'supabase' : 'local';
+  }
+
+  /**
+   * Configuración del bucket. Falla al USARLO —no al importar el módulo— y
+   * nombrando la variable que falta, igual que la pasarela de pago.
+   */
+  private configuracionSupabase(): { url: string; key: string; bucket: string } {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const bucket = process.env.SUPABASE_STORAGE_BUCKET;
+    if (!url) throw new Error('Falta SUPABASE_URL (necesaria con STORAGE_DRIVER=supabase)');
+    if (!key) throw new Error('Falta SUPABASE_SERVICE_ROLE_KEY (necesaria con STORAGE_DRIVER=supabase)');
+    if (!bucket) throw new Error('Falta SUPABASE_STORAGE_BUCKET (necesaria con STORAGE_DRIVER=supabase)');
+    return { url: url.replace(/\/$/, ''), key, bucket };
+  }
+
+  private urlObjeto(storageKey: string): string {
+    const { url, bucket } = this.configuracionSupabase();
+    const ruta = storageKey.split('/').map(encodeURIComponent).join('/');
+    return `${url}/storage/v1/object/${bucket}/${ruta}`;
+  }
+
+  private cabecerasSupabase(): Record<string, string> {
+    const { key } = this.configuracionSupabase();
+    return { Authorization: `Bearer ${key}`, apikey: key };
+  }
+
+  /**
+   * Escribe el contenido de un archivo del tenant en el proveedor activo.
    *
    * La clave la construye SIEMPRE el servidor (`construirClave`) y aquí se
-   * revalida el prefijo del tenant y la contención de rutas **antes** de tocar
-   * el disco, igual que en la lectura.
+   * revalida el prefijo del tenant **antes** de escribir, en los dos proveedores.
    */
-  async escribirLocal(tenantId: string, storageKey: string, contenido: Buffer): Promise<void> {
+  async guardar(tenantId: string, storageKey: string, contenido: Buffer): Promise<void> {
     this.assertClaveTenant(tenantId, storageKey);
+    if (this.driver === 'supabase') {
+      const respuesta = await fetch(this.urlObjeto(storageKey), {
+        method: 'POST',
+        headers: {
+          ...this.cabecerasSupabase(),
+          'Content-Type': 'application/octet-stream',
+          'x-upsert': 'true',
+        },
+        body: contenido,
+      });
+      if (!respuesta.ok) {
+        throw new Error(`Supabase Storage: no se pudo guardar (HTTP ${respuesta.status})`);
+      }
+      return;
+    }
     const ruta = this.rutaLocal(storageKey);
     await mkdir(path.dirname(ruta), { recursive: true });
     await writeFile(ruta, contenido);
   }
 
   /**
-   * Borra un archivo del tenant. No falla si ya no existe (`force: true`), de
-   * modo que sirve como acción compensatoria cuando la escritura en disco tuvo
-   * éxito pero la fila en base de datos no llegó a crearse.
+   * Borra un archivo del tenant. No falla si ya no existe (acción compensatoria
+   * cuando la escritura tuvo éxito pero la fila en base de datos no se creó).
    */
-  async eliminarLocal(storageKey: string): Promise<void> {
+  async eliminar(storageKey: string): Promise<void> {
+    if (this.driver === 'supabase') {
+      const respuesta = await fetch(this.urlObjeto(storageKey), {
+        method: 'DELETE',
+        headers: this.cabecerasSupabase(),
+      });
+      if (!respuesta.ok && respuesta.status !== 404) {
+        throw new Error(`Supabase Storage: no se pudo borrar (HTTP ${respuesta.status})`);
+      }
+      return;
+    }
     await rm(this.rutaLocal(storageKey), { force: true });
+  }
+
+  /**
+   * Lee una clave del tenant en el proveedor activo, sin validar el tipo de
+   * contenido (de eso se encarga el llamador). Lanza 404 si no existe: nunca 500.
+   */
+  async leer(tenantId: string, storageKey: string): Promise<Buffer> {
+    this.assertClaveTenant(tenantId, storageKey);
+    if (this.driver === 'supabase') {
+      const respuesta = await fetch(this.urlObjeto(storageKey), { headers: this.cabecerasSupabase() });
+      if (!respuesta.ok) throw new NotFoundException('Documento no encontrado');
+      return Buffer.from(await respuesta.arrayBuffer());
+    }
+    try {
+      return await readFile(this.rutaLocal(storageKey));
+    } catch {
+      throw new NotFoundException('Documento no encontrado');
+    }
   }
 
   /**
@@ -130,40 +205,22 @@ export class StorageService {
   }
 
   /**
-   * Lee del disco una clave del tenant y valida que el contenido real coincida
-   * con el `mimeType` declarado en la fila. Lanza NotFoundException (nunca 500)
-   * si el archivo no existe o si el contenido no es un tipo permitido.
+   * Lee una clave del tenant en el proveedor activo y valida que el contenido
+   * real coincida con el `mimeType` declarado en la fila. Lanza NotFoundException
+   * (nunca 500) si no existe o si el contenido no es un tipo permitido.
    *
-   * NOTA: la validación equivalente "al subir" —firma del buffer entrante y
-   * tamaño real desde `file.size` en lugar del `tamanioKb` declarado— pertenece
-   * al endpoint de subida de bytes, que todavía NO existe en este backend (los
-   * documentos se registran como metadatos). Por eso la comprobación efectiva
-   * hoy es la de este método, al servir.
+   * El endpoint de subida de bytes valida la firma ANTES de guardar; esta
+   * comprobación es la que protege al servir (defensa en profundidad).
    */
   async leerDocumentoValidado(
     tenantId: string,
     storageKey: string,
     mimeTypeDeclarado: string,
   ): Promise<Buffer> {
-    // Defensa en profundidad: la clave almacenada debe seguir siendo del tenant
-    // y no puede escapar del directorio base.
+    // Defensa en profundidad: la clave almacenada debe seguir siendo del tenant.
     this.assertClaveTenant(tenantId, storageKey);
-    let ruta: string;
-    try {
-      ruta = this.rutaLocal(storageKey);
-    } catch {
-      // Contención de rutas: se trata como "no existe", nunca como 500.
-      throw new NotFoundException('Documento no encontrado');
-    }
-
-    let contenido: Buffer;
-    try {
-      contenido = await readFile(ruta);
-    } catch {
-      // Fila en BD sin archivo en disco → 404, no 500.
-      throw new NotFoundException('Documento no encontrado');
-    }
-
+    // `leer` resuelve el proveedor activo y ya lanza 404 si no existe.
+    const contenido = await this.leer(tenantId, storageKey);
     const detectado = this.firmarMime(contenido);
     if (!detectado || detectado !== mimeTypeDeclarado) {
       // No se revela el motivo real: el cliente sólo ve un 404. El incidente

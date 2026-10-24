@@ -135,7 +135,7 @@ Esto nos costó varias rondas de depuración. El shell es **Windows PowerShell 5
 | Pasarela (Izipay) | `backend/src/core/pasarela/`, `modules/facturacion/` |
 | Reglas de agenda | `backend/src/modules/citas/citas.service.ts` (`evaluarFranja`) |
 | Feed de calendario | `backend/src/modules/feeds-calendario/` |
-| Documentos y archivos | `backend/src/core/storage/` (`UPLOADS_DIR`, tope 20 MB) |
+| Documentos y archivos | `backend/src/core/storage/` — `STORAGE_DRIVER=supabase` en producción (bucket), `UPLOADS_DIR` solo en local; tope 20 MB |
 | Avisos por WhatsApp | `frontend/src/services/whatsapp.ts` (manual, `wa.me`) |
 | Pantallas | `frontend/src/views/`; componentes reutilizables en `components/ui/` |
 
