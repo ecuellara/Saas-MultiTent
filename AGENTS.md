@@ -12,7 +12,7 @@ este proyecto ya pagó con tiempo.
 - **`frontend/`** — Vue 3.5 + Vite + Pinia + Tailwind 4. Mobile-first.
 - Multi-tenant con **base compartida y `tenantId`**; aislamiento en
   `backend/src/core/prisma/tenant-extension.ts`.
-- Desplegado en **Render** (API), **Vercel** (frontend) y **Supabase** (PostgreSQL).
+- Desplegado en **Render** (API), **Cloudflare Pages** (frontend, con proxy `/api` de mismo origen hacia Render), **Supabase** (PostgreSQL) y **Cloudflare R2** (archivos). Render es **free hasta el primer cliente real**; al firmarlo, **Starter** (la free duerme).
 - Especificación: `docs/dental-saas-arquitectura-v2.md`. Deuda aceptada:
   `docs/deuda-tecnica.md`. Cómo probar: `docs/como-probar.md`.
 
@@ -92,7 +92,7 @@ Reglas de esa cadena:
 |---|---|
 | Funciona en local y en Render faltan campos / 400 raros | Se migró sin `prisma generate`, o el build de producción no instaló las `devDependencies` (el CLI de Prisma y `tsx` viven ahí) |
 | La suite entera falla de golpe, con «column does not exist» | El contenedor murió con `Exited (137)` (sin memoria) y dejó el esquema desincronizado de `_prisma_migrations`. Reinicia el contenedor y vuelve a migrar; **no** es tu código |
-| La sesión se cae a los 15 minutos | La cookie de refresh es `SameSite=Strict`: el navegador debe hablar **con el mismo origen** (rewrite `/api` de Vercel). `VITE_API_URL` debe estar **vacía**; el `prebuild` lo verifica |
+| La sesión se cae a los 15 minutos | La cookie de refresh es `SameSite=Strict`: el navegador debe hablar **con el mismo origen** (proxy `/api` de Cloudflare Pages, antes rewrite de Vercel). `VITE_API_URL` debe estar **vacía** |
 | 400 «Referencia inválida» al guardar | Un campo de texto libre que en realidad es una **clave foránea**: valida antes de escribir, con mensaje claro. (Pasó con el ubigeo, ya retirado) |
 | «No se puede agendar en el pasado» al editar | Correcto: la regla del pasado se aplica al reprogramar. Las citas del seed están en fechas fijas del pasado |
 | El seed falla solo en ejecución | Una línea fusionada o un import roto en `prisma/seed*.ts`: `tsc` no los cubre |
@@ -136,7 +136,7 @@ Esto nos costó varias rondas de depuración. El shell es **Windows PowerShell 5
 | Pasarela (Izipay) | `backend/src/core/pasarela/`, `modules/facturacion/` |
 | Reglas de agenda | `backend/src/modules/citas/citas.service.ts` (`evaluarFranja`) |
 | Feed de calendario | `backend/src/modules/feeds-calendario/` |
-| Documentos y archivos | `backend/src/core/storage/` — `STORAGE_DRIVER=supabase` en producción (bucket), `UPLOADS_DIR` solo en local; tope 20 MB |
+| Documentos y archivos | `backend/src/core/storage/` — `STORAGE_DRIVER=r2` en producción (bucket R2, S3-API), `local` en desarrollo; `UPLOADS_DIR` solo aplica al driver local; tope 20 MB |
 | Avisos por WhatsApp | `frontend/src/services/whatsapp.ts` (manual, `wa.me`) |
 | Pantallas | `frontend/src/views/`; componentes reutilizables en `components/ui/` |
 
