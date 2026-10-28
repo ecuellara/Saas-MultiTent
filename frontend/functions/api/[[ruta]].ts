@@ -50,6 +50,13 @@ export const onRequest = async ({ request, env }: ContextoPages): Promise<Respon
   for (const nombre of CABECERAS_DE_SALTO) cabeceras.delete(nombre)
   cabeceras.set('x-forwarded-host', entrada.host)
   cabeceras.set('x-forwarded-proto', entrada.protocol.slice(0, -1))
+  // La IP real del cliente la fija Cloudflare en cf-connecting-ip y no es
+  // falsificable desde fuera. Se reescribe x-forwarded-for con ella para que la
+  // API cuente SIEMPRE los mismos saltos (el proxy de Render mas este) y
+  // TRUST_PROXY=2 deje de depender de cuantos saltos internos use Cloudflare;
+  // sin esto la auditoria acababa guardando la IP del borde.
+  const ipCliente = request.headers.get('cf-connecting-ip')
+  if (ipCliente) cabeceras.set('x-forwarded-for', ipCliente)
 
   const conCuerpo = request.method !== 'GET' && request.method !== 'HEAD'
 
