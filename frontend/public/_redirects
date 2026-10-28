@@ -1,0 +1,5 @@
+# SPA con history mode: cualquier ruta que no sea un fichero sirve index.html.
+# Las Pages Functions se evaluan ANTES que este archivo, asi que /api/* sigue
+# yendo al proxy de la API y no se ve afectado.
+
+/*    /index.html   200
