@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Ip, Param, Patch, Post, Put, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Ip, Param, Patch, Post, Put, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, Module, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -193,6 +193,25 @@ export type ResultadoLoginPlataforma =
 
 /** Resultados admitidos por `PlatformAuditLog.metadata.resultado`. */
 type ResultadoAuditoria = 'SUCCESS' | 'FAILURE';
+
+/** Fila del listado de tenants (select explícito, invariante 3). */
+interface TenantFila {
+  id: string;
+  slug: string;
+  nombre: string;
+  razonSocial: string | null;
+  estado: string;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+  suscripcion: {
+    id: string;
+    estado: string;
+    periodoInicio: Date;
+    periodoFin: Date;
+    plan: { id: string; codigo: string; nombre: string } | null;
+  } | null;
+}
 
 /** Forma mínima del cliente Prisma que usa la auditoría de plataforma. */
 interface ClienteAuditoria {
@@ -477,27 +496,256 @@ export class PlatformService {
   }
 
   async tenants(): Promise<unknown> {
-    // Invariante 3: `select` explícito en toda relación (nunca `include: true`).
-    return this.db.tenant.findMany({
-      select: {
-        id: true, slug: true, nombre: true, razonSocial: true, estado: true,
-        createdAt: true, updatedAt: true, deletedAt: true,
-        suscripcion: {
-          select: {
-            id: true, tenantId: true, planId: true, estado: true, iniciadaEn: true,
-            periodoInicio: true, periodoFin: true, canceladaEn: true,
-            createdAt: true, updatedAt: true,
-            plan: {
-              select: {
-                id: true, codigo: true, nombre: true, descripcion: true,
-                precioMensual: true, moneda: true, activo: true,
-              },
+    /**
+     * Listado enriquecido del panel (doc §10). Además de los campos base del
+     * tenant, añade por fila: plan (código y nombre), periodo de la
+     * suscripción, nº de usuarios (memberships ACTIVE) y nº de pacientes no
+     * borrados.
+     *
+     * Resuelto con `groupBy` AGREGADO, nunca con `include: true` (invariante 3)
+     * y sin N+1: dos groupBy de contexto + un `findMany` con `select`
+     * explícito, unidos en memoria por `tenantId`.
+     */
+    const db = this.prisma as unknown as {
+      tenant: { findMany: (a: unknown) => Promise<Array<TenantFila>> };
+      membership: {
+        groupBy: (a: unknown) => Promise<Array<{ tenantId: string; _count: { _all: number } }>>;
+      };
+      paciente: {
+        groupBy: (a: unknown) => Promise<Array<{ tenantId: string; _count: { _all: number } }>>;
+      };
+    };
+    const [filas, porUsuarios, porPacientes] = await Promise.all([
+      db.tenant.findMany({
+        select: {
+          id: true, slug: true, nombre: true, razonSocial: true, estado: true,
+          createdAt: true, updatedAt: true, deletedAt: true,
+          suscripcion: {
+            select: {
+              id: true, tenantId: true, planId: true, estado: true, iniciadaEn: true,
+              periodoInicio: true, periodoFin: true, canceladaEn: true,
+              createdAt: true, updatedAt: true,
+              plan: { select: { id: true, codigo: true, nombre: true } },
             },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: 'desc' },
+        // El listado oculta las archivadas (soft delete): `sesion` y `login`
+        // también las tratan como inexistentes.
+        where: { deletedAt: null },
+      } as unknown as object),
+      db.membership.groupBy({
+        by: ['tenantId'],
+        where: { estado: 'ACTIVE' },
+        _count: { _all: true },
+      } as unknown as object),
+      db.paciente.groupBy({
+        by: ['tenantId'],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      } as unknown as object),
+    ]);
+    const usuarios = new Map(porUsuarios.map((g) => [g.tenantId, g._count._all]));
+    const pacientes = new Map(porPacientes.map((g) => [g.tenantId, g._count._all]));
+    return filas.map((t) => ({ ...t, usuarios: usuarios.get(t.id) ?? 0, pacientes: pacientes.get(t.id) ?? 0 }));
+  }
+
+  /** Cambia el estado de la SUSCRIPCIÓN (y del tenant, por coherencia del panel). */
+  private async cambiarEstadoSuscripcion(
+    tenantId: string,
+    estado: 'ACTIVE' | 'SUSPENDED',
+  ): Promise<unknown> {
+    const tenant = (await this.db.tenant.findUnique({ where: { id: tenantId } })) as unknown as {
+      id: string;
+      estado: string;
+      deletedAt: Date | null;
+    } | null;
+    if (!tenant) throw new NotFoundException('Tenant no encontrado');
+    if (tenant.deletedAt) throw new ConflictException('La clínica está archivada');
+    const sub = await this.db.subscription.update({ where: { tenantId }, data: { estado } } as unknown as object);
+    if (tenant.estado !== estado) {
+      await this.db.tenant.update({ where: { id: tenantId }, data: { estado } } as unknown as object);
+    }
+    this.entitlements.invalidate(tenantId);
+    return sub;
+  }
+
+  /** Suspende (suscripción y tenant a SUSPENDED) y lo registra en el audit. */
+  async suspenderTenant(tenantId: string, platformUserId: string, ip?: string, userAgent?: string): Promise<unknown> {
+    const resultado = await this.cambiarEstadoSuscripcion(tenantId, 'SUSPENDED');
+    await this.auditar(platformUserId, {
+      accion: 'POST /api/platform/tenants/:id/suspender',
+      recurso: 'tenant',
+      ip,
+      userAgent,
+      resultado: 'SUCCESS',
+      detalle: tenantId,
+    });
+    return resultado;
+  }
+
+  /** Reactiva (suscripción y tenant a ACTIVE) y lo registra en el audit. */
+  async reactivarTenant(tenantId: string, platformUserId: string, ip?: string, userAgent?: string): Promise<unknown> {
+    const resultado = await this.cambiarEstadoSuscripcion(tenantId, 'ACTIVE');
+    await this.auditar(platformUserId, {
+      accion: 'POST /api/platform/tenants/:id/reactivar',
+      recurso: 'tenant',
+      ip,
+      userAgent,
+      resultado: 'SUCCESS',
+      detalle: tenantId,
+    });
+    return resultado;
+  }
+
+  /**
+   * Archivado (soft delete, `Tenant.deletedAt`). Los datos se conservan: la
+   * clínica desaparece del listado, la sesión la oculta (AuthService filtra
+   * `deletedAt`) y el login la rechaza con un mensaje claro.
+   */
+  async archivarTenant(tenantId: string, platformUserId: string, ip?: string, userAgent?: string): Promise<{ ok: true }> {
+    await this.auditar(platformUserId, {
+      accion: 'POST /api/platform/tenants/:id/archivar',
+      recurso: 'tenant',
+      ip,
+      userAgent,
+      resultado: 'SUCCESS',
+      detalle: tenantId,
+    });
+    const tenant = (await this.db.tenant.findUnique({ where: { id: tenantId } })) as unknown as {
+      deletedAt: Date | null;
+    } | null;
+    if (!tenant) throw new NotFoundException('Tenant no encontrado');
+    if (tenant.deletedAt) throw new ConflictException('La clínica ya está archivada');
+    await this.db.tenant.update({
+      where: { id: tenantId },
+      data: { deletedAt: new Date() },
     } as unknown as object);
+    this.entitlements.invalidate(tenantId);
+    return { ok: true as const };
+  }
+
+  /** Revierte el archivado (`deletedAt` a NULL). */
+  async restaurarTenant(tenantId: string, platformUserId: string, ip?: string, userAgent?: string): Promise<{ ok: true }> {
+    await this.auditar(platformUserId, {
+      accion: 'POST /api/platform/tenants/:id/restaurar',
+      recurso: 'tenant',
+      ip,
+      userAgent,
+      resultado: 'SUCCESS',
+      detalle: tenantId,
+    });
+    const tenant = (await this.db.tenant.findUnique({ where: { id: tenantId } })) as unknown as {
+      deletedAt: Date | null;
+    } | null;
+    if (!tenant) throw new NotFoundException('Tenant no encontrado');
+    if (!tenant.deletedAt) throw new ConflictException('La clínica no está archivada');
+    await this.db.tenant.update({
+      where: { id: tenantId },
+      data: { deletedAt: null, estado: 'ACTIVE' },
+    } as unknown as object);
+    this.entitlements.invalidate(tenantId);
+    return { ok: true as const };
+  }
+
+  /**
+   * Eliminación FÍSICA de la clínica, SOLO si está vacía: 0 pacientes
+   * (incluidos los borrados lógicos), 0 citas, 0 pagos y 0 documentos. Con
+   * cualquier dato → 409 con el mensaje exacto (nada de borrado duro silencioso).
+   *
+   * La auditoría de plataforma se escribe ANTES de borrar nada. Si está vacía,
+   * se borra TODO en una transacción en orden de dependencias de FK (primero
+   * lo que otras filas referencian con FK restrict; p. ej. Tratamiento →
+   * Especialidad), incluido el usuario dueño si no pertenece a otra clínica.
+   */
+  async eliminarTenant(tenantId: string, platformUserId: string, ip?: string, userAgent?: string): Promise<{ ok: true }> {
+    const tenant = (await this.db.tenant.findUnique({ where: { id: tenantId } })) as unknown as {
+      id: string;
+      slug: string;
+    } | null;
+    if (!tenant) throw new NotFoundException('Tenant no encontrado');
+    await this.auditar(platformUserId, {
+      accion: 'DELETE /api/platform/tenants/:id',
+      recurso: 'tenant',
+      ip,
+      userAgent,
+      resultado: 'SUCCESS',
+      detalle: tenantId,
+    });
+    const db = this.prisma as unknown as Record<
+      string,
+      { count: (a: unknown) => Promise<number>; deleteMany: (a: unknown) => Promise<unknown> }
+    >;
+    const contar = (modelo: string): Promise<number> => db[modelo].count({ where: { tenantId } });
+    const [pacientes, citas, pagos, documentos] = await Promise.all([
+      contar('paciente'),
+      contar('cita'),
+      contar('pago'),
+      contar('documentoPaciente'),
+    ]);
+    if (pacientes + citas + pagos + documentos > 0) {
+      throw new ConflictException('La clínica tiene datos y no se puede eliminar; use archivar');
+    }
+    await this.prisma.$transaction(async (t) => {
+      const tx = t as unknown as Record<
+        string,
+        { deleteMany: (a: unknown) => Promise<unknown>; count: (a: unknown) => Promise<number>; findMany: (a: unknown) => Promise<Array<{ userId: string }>> }
+      >;
+            const borrar = (modelo: string): Promise<unknown> => tx[modelo].deleteMany({ where: { tenantId } });
+      // Dueños del tenant: se capturan ANTES de borrar las memberships (y con
+      // la conexión de la transacción, para no leer datos ya caducados).
+      const dueños = new Set(
+        (await tx.membership.findMany({ where: { tenantId }, select: { userId: true } })).map((m) => m.userId),
+      );
+      await borrar('consentimientoFirmado');
+      await borrar('consentimientoPlantilla');
+      await borrar('pagoDetalle');
+      await borrar('cuota');
+      await borrar('pago');
+      await borrar('odontogramaHallazgo');
+      await borrar('odontogramaEvento');
+      await borrar('odontograma');
+      await borrar('historialClinico');
+      await borrar('cita');
+      await borrar('compraDetalle');
+      await borrar('movimientoInventario');
+      await borrar('compra');
+      await borrar('insumo');
+      await borrar('proveedor');
+      await borrar('tratamiento');
+      await borrar('especialidad');
+      await borrar('documentoPaciente');
+      await borrar('paciente');
+      await borrar('intentoIzipay');
+      await borrar('feedCalendario');
+      await borrar('googleAccount');
+      await borrar('auditoria');
+      await borrar('plantillaWhatsApp');
+      await borrar('tenantConfig');
+      await borrar('membership');
+      // Por FK restrict desde RolePermission hay que avisar de los roles antes
+      // que borrarlos: se borran tras las memberships, arriba.
+      await borrar('role');
+      await borrar('subscription');
+      await borrar('cobroSuscripcion');
+      // El dueño se elimina si NO pertenece a ninguna otra clínica (el
+      // membership de este tenant ya está borrado arriba). También se exige que
+      // no deje auditoría en otras clínicas: la FK de Auditoria.usuario es restrict.
+      for (const uid of dueños) {
+        const otras = await tx.membership.count({
+          where: { userId: uid, tenantId: { not: tenantId } },
+        });
+        if (otras > 0) continue;
+        const auditoriaAjena = await tx.auditoria.count({
+          where: { usuarioId: uid, tenantId: { not: tenantId } },
+        });
+        if (auditoriaAjena > 0) continue;
+        await tx.user.deleteMany({ where: { id: uid } });
+      }
+      await tx.tenant.deleteMany({ where: { id: tenantId } });
+    });
+    this.entitlements.invalidate(tenantId);
+    return { ok: true as const };
   }
 
   async tenant(id: string): Promise<unknown> {
@@ -1019,6 +1267,89 @@ export class PlatformController {
     @UploadedFile() archivo: ArchivoSubido | undefined,
   ): Promise<{ ok: true }> {
     return this.service.subirLogo(id, archivo);
+  }
+
+  /** Solo `owner`: suspende la clínica (suscripción y tenant a SUSPENDED). */
+  @PlatformRoles('owner')
+  @Post('tenants/:id/suspender')
+  @HttpCode(200)
+  suspender(
+    @Param('id') id: string,
+    @Req() req: Request & { platformUser?: { id: string } },
+  ): Promise<unknown> {
+    return this.service.suspenderTenant(
+      id,
+      req.platformUser!.id,
+      req.ip,
+      req.headers?.['user-agent'],
+    );
+  }
+
+  /** Solo `owner`: reactiva la clínica suspendida (todo a ACTIVE). */
+  @PlatformRoles('owner')
+  @Post('tenants/:id/reactivar')
+  @HttpCode(200)
+  reactivar(
+    @Param('id') id: string,
+    @Req() req: Request & { platformUser?: { id: string } },
+  ): Promise<unknown> {
+    return this.service.reactivarTenant(
+      id,
+      req.platformUser!.id,
+      req.ip,
+      req.headers?.['user-agent'],
+    );
+  }
+
+  /** Solo `owner`: archivado (soft delete) de la clínica. Los datos quedan. */
+  @PlatformRoles('owner')
+  @Post('tenants/:id/archivar')
+  @HttpCode(200)
+  archivar(
+    @Param('id') id: string,
+    @Req() req: Request & { platformUser?: { id: string } },
+  ): Promise<{ ok: true }> {
+    return this.service.archivarTenant(
+      id,
+      req.platformUser!.id,
+      req.ip,
+      req.headers?.['user-agent'],
+    );
+  }
+
+  /** Solo `owner`: restaura una clínica archivada. */
+  @PlatformRoles('owner')
+  @Post('tenants/:id/restaurar')
+  @HttpCode(200)
+  restaurar(
+    @Param('id') id: string,
+    @Req() req: Request & { platformUser?: { id: string } },
+  ): Promise<{ ok: true }> {
+    return this.service.restaurarTenant(
+      id,
+      req.platformUser!.id,
+      req.ip,
+      req.headers?.['user-agent'],
+    );
+  }
+
+  /**
+   * Solo `owner`: eliminación FÍSICA. SOLO clínicas sin datos: con pacientes,
+   * citas, pagos o documentos el servicio responde 409. También registra en el
+   * audit de plataforma antes de borrar.
+   */
+  @PlatformRoles('owner')
+  @Delete('tenants/:id')
+  eliminar(
+    @Param('id') id: string,
+    @Req() req: Request & { platformUser?: { id: string } },
+  ): Promise<{ ok: true }> {
+    return this.service.eliminarTenant(
+      id,
+      req.platformUser!.id,
+      req.ip,
+      req.headers?.['user-agent'],
+    );
   }
 
   @Get('tenants/:id/metricas')

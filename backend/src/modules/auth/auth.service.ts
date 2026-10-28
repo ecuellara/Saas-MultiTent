@@ -122,6 +122,30 @@ export class AuthService {
     }
     const { ok, upgradedHash } = await verificarPassword(user.passwordHash, user.passwordAlgo, password);
     if (!ok) throw new UnauthorizedException('Credenciales inválidas');
+    // Clínica archivada (Tenant.deletedAt): el login se rechaza con un mensaje
+    // claro ANTES de emitir sesión. Solo bloquea si el usuario no conserva
+    // ninguna clínica activa: si pertenece a varias, entra con las que siguen
+    // vivas (las archivadas las filtra ya `sesion`).
+    const dbArchivadas = this.prisma as unknown as {
+      membership: { count: (a: unknown) => Promise<number> };
+    };
+    // Rechazo SOLO si el usuario tiene membresías y ninguna viva: sin
+    // membresías el comportamiento previo queda intacto.
+    const vivas = await dbArchivadas.membership.count({
+      where: {
+        userId: user.id,
+        estado: 'ACTIVE',
+        tenant: { deletedAt: null },
+      },
+    });
+    if (vivas === 0) {
+      const alguna = await dbArchivadas.membership.count({ where: { userId: user.id } });
+      if (alguna > 0) {
+        throw new ForbiddenException(
+          'Su clínica está archivada y no admite acceso. Contacte con la plataforma.',
+        );
+      }
+    }
     const datos: Record<string, unknown> = { lastLoginAt: new Date() };
     if (upgradedHash) {
       datos.passwordHash = upgradedHash;

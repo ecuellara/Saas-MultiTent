@@ -60,12 +60,16 @@ export interface ClinicaResumen {
   nombre: string
   razonSocial: string | null
   estado: 'ACTIVE' | 'SUSPENDED' | 'CANCELLED'
+  deletedAt: string | null
   suscripcion: {
     estado: string
     planId: string
+    periodoInicio: string
     periodoFin: string
     plan?: { codigo: string; nombre: string }
   } | null
+  usuarios: number
+  pacientes: number
 }
 
 export interface ClinicaAlta {
@@ -157,12 +161,6 @@ export async function listarClinicas(): Promise<ClinicaResumen[]> {
 
 export interface DetalleClinica extends ClinicaResumen {
   createdAt: string
-  suscripcion: {
-    estado: string
-    planId: string
-    periodoFin: string
-    plan?: { codigo: string; nombre: string }
-  } | null
   sedes: Array<{ id: string; nombre: string; esPrincipal: boolean }>
 }
 
@@ -192,6 +190,28 @@ export async function actualizarClinica(
 ): Promise<ClinicaResumen> {
   const { data } = await plataforma.patch<ClinicaResumen>(`/platform/tenants/${id}`, patch)
   return data
+}
+
+export async function suspenderClinica(id: string): Promise<unknown> {
+  const { data } = await plataforma.post(`/platform/tenants/${id}/suspender`)
+  return data
+}
+
+export async function reactivarClinica(id: string): Promise<unknown> {
+  const { data } = await plataforma.post(`/platform/tenants/${id}/reactivar`)
+  return data
+}
+
+export async function archivarClinica(id: string): Promise<void> {
+  await plataforma.post(`/platform/tenants/${id}/archivar`)
+}
+
+export async function restaurarClinica(id: string): Promise<void> {
+  await plataforma.post(`/platform/tenants/${id}/restaurar`)
+}
+
+export async function eliminarClinica(id: string): Promise<void> {
+  await plataforma.delete(`/platform/tenants/${id}`)
 }
 
 export async function metricasClinica(id: string): Promise<MetricasClinica> {
