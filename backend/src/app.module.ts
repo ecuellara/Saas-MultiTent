@@ -81,8 +81,11 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module.js';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(cookieParser()).forRoutes('*');
+    // Sintaxis de path-to-regexp v8 (Express 5): un `*` sin nombre obliga a Nest
+    // a auto-convertirlo con un WARN en cada arranque ("/api/*"). `{*path}`
+    // cubre todo lo que cuelga del prefijo global `/api` sin avisar.
+    consumer.apply(cookieParser()).forRoutes('{*path}');
     // El scope ALS debe envolver toda la petición (ver TenantContextMiddleware).
-    consumer.apply(TenantContextMiddleware).forRoutes('*');
+    consumer.apply(TenantContextMiddleware).forRoutes('{*path}');
   }
 }
