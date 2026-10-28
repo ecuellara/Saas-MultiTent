@@ -8,12 +8,15 @@ import {
   actualizarConfiguracion,
   DIAS_SEMANA,
   obtenerConfiguracion,
+  quitarLogo,
   resumirHorario,
+  subirLogo,
   type Configuracion,
   type Descanso,
   type DiaSemana,
   type Horario,
 } from '../services/configuracion'
+import { COLORES_POR_DEFECTO, normalizarColores, urlLogoPublico } from '../services/branding'
 import { mensajeDeError } from '../services/errores'
 import { useSessionStore } from '../stores/session'
 import { Cog6ToothIcon } from '@heroicons/vue/24/outline'
@@ -29,6 +32,9 @@ const cargando = ref(true)
 const guardando = ref(false)
 const error = ref('')
 const guardadoOk = ref(false)
+const subiendoLogo = ref(false)
+const quitandoLogo = ref(false)
+const avisoLogo = ref('')
 
 const datos = reactive({
   nombre: '',
@@ -37,8 +43,9 @@ const datos = reactive({
   telefono: '',
   email: '',
   ciudad: '',
-  logoUrl: '',
 })
+
+const colores = reactive({ ...COLORES_POR_DEFECTO })
 
 type FilaHorario = { abierto: boolean; inicio: string; fin: string }
 const horario = reactive<Record<DiaSemana, FilaHorario>>({
@@ -58,6 +65,14 @@ const puedeEditar = computed(() => sesion.puede('sedes.manage'))
 
 const resumen = computed(() => (config.value ? resumirHorario(config.value.horario) : ''))
 
+const logoPreview = computed(() => {
+  if (!config.value) return ''
+  if (config.value.logoUrl === '__storage__' && sesion.clinicaActiva) {
+    return urlLogoPublico(sesion.clinicaActiva.slug, config.value.updatedAt)
+  }
+  return config.value.logoUrl ?? ''
+})
+
 function aFormulario(c: Configuracion): void {
   datos.nombre = c.nombre ?? ''
   datos.ruc = c.ruc ?? ''
@@ -65,7 +80,9 @@ function aFormulario(c: Configuracion): void {
   datos.telefono = c.telefono ?? ''
   datos.email = c.email ?? ''
   datos.ciudad = c.ciudad ?? ''
-  datos.logoUrl = c.logoUrl ?? ''
+  const marca = normalizarColores(c.colores)
+  colores.primario = marca?.primario ?? COLORES_POR_DEFECTO.primario
+  colores.acento = marca?.acento ?? COLORES_POR_DEFECTO.acento
   for (const { clave } of DIAS_SEMANA) {
     const f = c.horario?.[clave] ?? null
     horario[clave] = f
@@ -91,6 +108,54 @@ async function cargar(): Promise<void> {
 }
 
 onMounted(cargar)
+
+function aplicarConfigGuardada(c: Configuracion): void {
+  config.value = c
+  aFormulario(c)
+  sesion.aplicarBrandingConfig(c)
+}
+
+async function alCambiarLogo(evento: Event): Promise<void> {
+  const input = evento.target as HTMLInputElement
+  const archivo = input.files?.[0]
+  input.value = ''
+  if (!archivo) return
+  error.value = ''
+  avisoLogo.value = ''
+  if (archivo.type !== 'image/png' && archivo.type !== 'image/jpeg') {
+    error.value = 'El logo debe ser una imagen PNG o JPEG'
+    return
+  }
+  if (archivo.size > 2 * 1024 * 1024) {
+    error.value = 'El logo no puede superar 2 MB'
+    return
+  }
+  subiendoLogo.value = true
+  try {
+    const c = await subirLogo(archivo)
+    aplicarConfigGuardada(c)
+    avisoLogo.value = 'Logo actualizado.'
+  } catch (e) {
+    error.value = mensajeDeError(e, 'No se pudo subir el logo')
+  } finally {
+    subiendoLogo.value = false
+  }
+}
+
+async function borrarLogo(): Promise<void> {
+  error.value = ''
+  avisoLogo.value = ''
+  quitandoLogo.value = true
+  try {
+    const c = await quitarLogo()
+    aplicarConfigGuardada(c)
+    avisoLogo.value = 'Logo eliminado.'
+  } catch (e) {
+    error.value = mensajeDeError(e, 'No se pudo quitar el logo')
+  } finally {
+    quitandoLogo.value = false
+  }
+}
 
 // Atajo desde la Agenda («Suscribir mi agenda»): baja a la sección Calendario.
 onMounted(() => {
@@ -147,12 +212,11 @@ async function guardar(): Promise<void> {
       telefono: datos.telefono.trim() || undefined,
       email: datos.email.trim() || undefined,
       ciudad: datos.ciudad.trim() || undefined,
-      logoUrl: datos.logoUrl.trim() || undefined,
+      colores: { primario: colores.primario, acento: colores.acento },
       horario: h,
       descansos: descansos.value,
     })
-    config.value = c
-    aFormulario(c)
+    aplicarConfigGuardada(c)
     guardadoOk.value = true
   } catch (e) {
     // Aquí llegan las reglas del DTO: días mal escritos, horas sin cero
@@ -212,9 +276,54 @@ const campo = 'w-full rounded-xl border border-line bg-background-soft/60 px-3 p
               <span class="mb-1 block font-medium text-ink">Ciudad</span>
               <input v-model="datos.ciudad" type="text" :class="campo" />
             </label>
+
+            <div class="block text-sm sm:col-span-2">
+              <span class="mb-1 block font-medium text-ink">Logo de la clínica</span>
+              <div class="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-background-soft/60 p-3">
+                <div class="flex h-16 w-36 items-center justify-center overflow-hidden rounded-lg bg-background">
+                  <img v-if="logoPreview" :src="logoPreview" alt="Logo de la clínica" class="h-full w-full object-contain" />
+                  <span v-else class="text-xs text-muted">Sin logo</span>
+                </div>
+                <label
+                  class="cursor-pointer rounded-md border border-line px-3 py-1.5 text-sm text-ink hover:bg-background-soft"
+                  :class="{ 'pointer-events-none opacity-60': !puedeEditar || subiendoLogo }"
+                >
+                  {{ subiendoLogo ? 'Subiendo…' : 'Subir logo' }}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    class="sr-only"
+                    :disabled="!puedeEditar || subiendoLogo"
+                    @change="alCambiarLogo"
+                  />
+                </label>
+                <button
+                  v-if="logoPreview"
+                  type="button"
+                  class="rounded-md border border-line px-3 py-1.5 text-sm text-error hover:bg-error/10 disabled:opacity-60"
+                  :disabled="!puedeEditar || quitandoLogo"
+                  @click="borrarLogo"
+                >
+                  {{ quitandoLogo ? 'Quitando…' : 'Quitar logo' }}
+                </button>
+              </div>
+              <p class="mt-1 text-xs text-muted">PNG o JPEG, máximo 2 MB. El bucket sigue privado.</p>
+              <p v-if="avisoLogo" class="mt-1 text-xs text-success" role="status">{{ avisoLogo }}</p>
+            </div>
+
             <label class="block text-sm">
-              <span class="mb-1 block font-medium text-ink">Logo (URL)</span>
-              <input v-model="datos.logoUrl" type="url" placeholder="https://…" :class="campo" />
+              <span class="mb-1 block font-medium text-ink">Color principal</span>
+              <div class="flex items-center gap-2">
+                <input v-model="colores.primario" type="color" class="h-10 w-14 cursor-pointer rounded-lg border border-line bg-background p-1" />
+                <span class="font-mono text-xs text-muted">{{ colores.primario }}</span>
+              </div>
+            </label>
+            <label class="block text-sm">
+              <span class="mb-1 block font-medium text-ink">Color de acento</span>
+              <div class="flex items-center gap-2">
+                <input v-model="colores.acento" type="color" class="h-10 w-14 cursor-pointer rounded-lg border border-line bg-background p-1" />
+                <span class="font-mono text-xs text-muted">{{ colores.acento }}</span>
+              </div>
             </label>
           </div>
         </section>

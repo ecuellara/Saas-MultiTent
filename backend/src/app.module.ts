@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { AuditInterceptor } from './core/audit/audit.interceptor.js';
+import { BrandingModule } from './core/branding/branding.module.js';
 import { GlobalExceptionFilter } from './core/filters/global-exception.filter.js';
 import { LoggingInterceptor } from './core/logging/logging.interceptor.js';
 import { FeatureGuard } from './core/guards/feature.guard.js';
@@ -28,6 +29,7 @@ import { PagosModule } from './modules/pagos/pagos.module.js';
 import { PlatformModule } from './modules/platform/platform.module.js';
 import { PlantillasModule } from './modules/plantillas/plantillas.module.js';
 import { ProveedoresModule } from './modules/proveedores/proveedores.module.js';
+import { PublicoModule } from './modules/publico/publico.module.js';
 import { RolesModule } from './modules/roles/roles.module.js';
 import { SedesModule } from './modules/sedes/sedes.module.js';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module.js';
@@ -37,6 +39,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module.js';
 @Module({
   imports: [
     PrismaModule,
+    BrandingModule,
     AuthModule,
     PacientesModule,
     CitasModule,
@@ -56,6 +59,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module.js';
     MembershipsModule,
     PlatformModule,
     PlantillasModule,
+    PublicoModule,
     RolesModule,
     SedesModule,
     UsuariosModule,

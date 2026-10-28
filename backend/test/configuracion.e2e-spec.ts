@@ -14,10 +14,14 @@
  */
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
+import { StorageService } from '../src/core/storage/storage.service.js';
+import { FALSO_PNG, PNG_BYTES } from './helpers/archivos.js';
 import {
   PASSWORD_PLAIN,
   limpiarDosTenants,
@@ -77,6 +81,7 @@ function horarioBase(extra: Record<string, unknown> = {}): Record<string, unknow
 describe('Configuración de la clínica', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let storage: StorageService;
   let db: Db;
   let datos: DosTenants;
   let adminH: Record<string, string>;
@@ -86,6 +91,7 @@ describe('Configuración de la clínica', () => {
     const modulo = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = await montarAppE2E(modulo);
     prisma = app.get(PrismaService);
+    storage = app.get(StorageService);
     db = prisma as unknown as Db;
 
     await limpiarDosTenants(prisma);
@@ -140,6 +146,12 @@ describe('Configuración de la clínica', () => {
       // usuario (global) se borra aparte.
       await db.user.deleteMany({ where: { email: EMAIL_RECEP } });
       await limpiarDosTenants(prisma);
+      const branding = path.join(storage.uploadsBase, 'tenants', datos.a.tenantId, 'branding');
+      try {
+        await fs.promises.rm(branding, { recursive: true, force: true });
+      } catch {
+        // La limpieza no debe enmascarar el resultado de las pruebas.
+      }
     }
     if (app) await app.close();
   });
@@ -247,6 +259,64 @@ describe('Configuración de la clínica', () => {
     const hb = (rb.body.horario ?? rb.body.data?.horario) as Record<string, { inicio: string }>;
     expect(ha.lun?.inicio).toBe('09:00');
     expect(hb.lun?.inicio).toBe('14:00');
+  });
+
+  it('7. colores de marca: hex validado y aislado por clínica', async () => {
+    const srv = app.getHttpServer();
+    const ok = await request(srv)
+      .patch('/api/configuracion')
+      .set(adminH)
+      .send({ colores: { primario: '#112233', acento: '#ABCDEF' } })
+      .expect(200);
+    expect((ok.body.colores ?? ok.body.data?.colores).primario.toLowerCase()).toBe('#112233');
+    expect((ok.body.colores ?? ok.body.data?.colores).acento.toLowerCase()).toBe('#abcdef');
+
+    for (const colores of [
+      { primario: '#123', acento: '#ABCDEF' },
+      { primario: 'azul', acento: '#ABCDEF' },
+      { primario: '#112233' },
+      { primario: '#112233', acento: '#ABCDEF', extra: '#000000' },
+    ]) {
+      await request(srv).patch('/api/configuracion').set(adminH).send({ colores }).expect(400);
+    }
+
+    const adminB = await loginComo(datos.b.userEmail);
+    const b = await request(srv).get('/api/configuracion').set(adminB).expect(200);
+    expect(b.body.colores ?? b.body.data?.colores ?? null).toBeNull();
+  });
+
+  it('8. logo: magic bytes, ruta pública sin sesión y borrado', async () => {
+    const srv = app.getHttpServer();
+
+    // Un texto con extensión .png no pasa: manda el contenido, no el nombre.
+    await request(srv)
+      .post('/api/configuracion/logo')
+      .set(adminH)
+      .attach('archivo', FALSO_PNG, { filename: 'logo.png', contentType: 'image/png' })
+      .expect(400);
+
+    await request(srv)
+      .post('/api/configuracion/logo')
+      .set(adminH)
+      .attach('archivo', PNG_BYTES, { filename: 'logo.png', contentType: 'image/png' })
+      .expect(201);
+
+    const cfg = await request(srv).get('/api/configuracion').set(adminH).expect(200);
+    expect(cfg.body.logoUrl ?? cfg.body.data?.logoUrl).toBe('__storage__');
+
+    // Sin token ni X-Tenant-Id: se resuelve por slug y se lee del storage privado.
+    const publico = await request(srv)
+      .get(`/api/publico/logo/${datos.a.slug}`)
+      .expect(200);
+    expect(publico.headers['content-type']).toContain('image/png');
+    expect(publico.headers['x-content-type-options']).toBe('nosniff');
+    expect(Buffer.compare(publico.body, PNG_BYTES)).toBe(0);
+
+    // El slug de B no puede servir el logo de A.
+    await request(srv).get(`/api/publico/logo/${datos.b.slug}`).expect(404);
+
+    await request(srv).delete('/api/configuracion/logo').set(adminH).expect(200);
+    await request(srv).get(`/api/publico/logo/${datos.a.slug}`).expect(404);
   });
 
   async function loginComo(email: string): Promise<Record<string, string>> {

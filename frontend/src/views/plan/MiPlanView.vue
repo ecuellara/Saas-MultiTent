@@ -99,10 +99,21 @@ async function alExito(cobroId: string): Promise<void> {
 
       <div v-if="plan.cobroPendiente" class="mt-4 rounded-lg border border-warning/40 bg-warning/5 p-5">
         <p class="text-xs font-medium uppercase text-muted">Cobro pendiente</p>
-        <p class="mt-2 text-2xl font-semibold text-ink">{{ formatoMoneda(plan.cobroPendiente.monto) }}</p>
+        <p class="mt-2 text-2xl font-semibold text-ink">{{ formatoMoneda(plan.cobroPendiente.total ?? plan.cobroPendiente.monto) }}</p>
+        <dl v-if="plan.cobroPendiente.comision" class="mt-3 space-y-1 text-sm">
+          <div class="flex justify-between gap-2">
+            <dt class="text-muted">Precio del plan</dt>
+            <dd class="text-ink">{{ formatoMoneda(plan.cobroPendiente.monto) }}</dd>
+          </div>
+          <div class="flex justify-between gap-2">
+            <dt class="text-muted">Comisión de la pasarela</dt>
+            <dd class="text-ink">{{ formatoMoneda(plan.cobroPendiente.comision) }}</dd>
+          </div>
+        </dl>
         <p class="mt-1 text-xs text-muted">
           Periodo {{ formatearFechaUTC(plan.cobroPendiente.periodoInicio) }} → {{ formatearFechaUTC(plan.cobroPendiente.periodoFin) }}
         </p>
+        <p v-if="plan.cobroPendiente.comision" class="mt-1 text-xs text-muted">El importe incluye la comisión de la pasarela de pago, que asume la clínica.</p>
         <button
           v-if="puedePagar"
           type="button"

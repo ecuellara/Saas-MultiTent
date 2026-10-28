@@ -25,11 +25,13 @@ describe('Izipay suscripciones REST V4 (stub HTTP local)', () => {
   const previas = Object.fromEntries(variables.map((k) => [k, process.env[k]]));
   const http = () => request(app.getHttpServer());
   const token = () => http().post('/api/facturacion/mi-plan/formtoken').set(H);
+  // Precio del plan (249) MÁS la comisión de Izipay (11,39): 260,39.
+  const PLAN_TOTAL = 26039;
   async function aviso(opciones: { orderId?: string; uuid?: string; amount?: number; currency?: string; status?: string; key?: string } = {}) {
     if (!opciones.orderId) await token().expect(201);
     const raw = JSON.stringify({ shopId: 'shop-test', orderStatus: opciones.status ?? 'PAID',
       orderDetails: { orderId: opciones.orderId ?? recibido.orderId },
-      transactions: [{ uuid: opciones.uuid ?? randomUUID(), status: opciones.status ?? 'PAID', amount: opciones.amount ?? 24900, currency: opciones.currency ?? 'PEN' }],
+      transactions: [{ uuid: opciones.uuid ?? randomUUID(), status: opciones.status ?? 'PAID', amount: opciones.amount ?? PLAN_TOTAL, currency: opciones.currency ?? 'PEN' }],
     }, null, 2); // Espacios y saltos: NO es el JSON canónico.
     const key = opciones.key ?? 'password';
     return { 'kr-answer': raw, 'kr-hash-key': key, 'kr-hash-algorithm': 'sha256_hmac',
@@ -90,12 +92,14 @@ describe('Izipay suscripciones REST V4 (stub HTTP local)', () => {
     for (const k of variables) { if (previas[k] === undefined) delete process.env[k]; else process.env[k] = previas[k]; }
   });
 
-  it('formtoken del plan: importe del servidor, inyección del cliente ignorada, céntimos exactos', async () => {
+  it('formtoken del plan: importe del servidor con comisión, inyección del cliente ignorada, céntimos exactos', async () => {
     const r = await token().send({ amount: 1, monto: 1, orderId: 'atacante', estado: 'pagado' }).expect(201);
     expect(r.body.formToken).toBe('stub-form-token');
     expect(r.body.publicKey).toBe('public-test');
     expect(typeof r.body.cobroId).toBe('string');
-    expect(recibido.amount).toBe(24900);
+    // Precio 249 + comisión 11,39 → 260,39.
+    expect(r.body.importe).toEqual({ precio: '249.00', comision: '11.39', total: '260.39', moneda: 'PEN' });
+    expect(recibido.amount).toBe(PLAN_TOTAL);
     expect(recibido.orderId).not.toBe('atacante');
     expect(recibido.currency).toBe('PEN');
     expect(recibido).not.toHaveProperty('formAction');
@@ -104,7 +108,7 @@ describe('Izipay suscripciones REST V4 (stub HTTP local)', () => {
     expect(recibido.metadata).toMatchObject({ cobroSuscripcionId: r.body.cobroId, tenantId: datos.a.tenantId });
     expect(recibido.metadata).not.toHaveProperty('pagoId');
     const intento = await prisma.intentoIzipay.findUniqueOrThrow({ where: { orderId: String(recibido.orderId) } });
-    expect(intento).toMatchObject({ importeCentimos: 24900n, moneda: 'PEN', cobroSuscripcionId: r.body.cobroId });
+    expect(intento).toMatchObject({ importeCentimos: 26039n, moneda: 'PEN', cobroSuscripcionId: r.body.cobroId });
     // Garantía estructural: el intento NO puede referenciar un Pago.
     expect('pagoId' in intento).toBe(false);
     expect(desdeCentimos(aCentimos('249.00')).toFixed(2)).toBe('249.00');
@@ -193,7 +197,9 @@ describe('Izipay suscripciones REST V4 (stub HTTP local)', () => {
       periodoInicio: new Date(), periodoFin: new Date(), metadata: {} } });
     await prisma.intentoIzipay.create({ data: { orderId, tenantId: datos.b.tenantId, usuarioId: datos.b.userId,
       cobroSuscripcionId: cobroB.id, importeCentimos: 24900n, moneda: 'PEN', metadata: {} } });
-    const ajeno = await aviso({ orderId, key: 'sha256_hmac' });
+    // Importe deliberadamente distinto al del plan: lo que debe conciliar aquí
+    // es el tenant; el importe viene del intento creado a mano.
+    const ajeno = await aviso({ orderId, amount: 24900, key: 'sha256_hmac' });
     await http().post('/api/facturacion/mi-plan/validar-retorno').set(H).send(ajeno).expect(400);
     await http().post('/api/facturacion/mi-plan/validar-retorno').set(HB).send(ajeno).expect(201);
     expect(await prisma.eventoIzipay.count()).toBe(0);
@@ -278,6 +284,7 @@ describe('Izipay suscripciones REST V4 (stub HTTP local)', () => {
     await token().expect(201);
     const estado2 = await http().get('/api/facturacion/mi-plan').set(H).expect(200);
     expect(Number(estado2.body.cobroPendiente.monto)).toBe(249);
+    expect(estado2.body.cobroPendiente).toMatchObject({ comision: '11.39', total: '260.39' });
     const cuerpo = await aviso();
     await http().post('/api/webhooks/izipay').send(cuerpo).expect(200);
     const estado3 = await http().get('/api/facturacion/mi-plan').set(H).expect(200);

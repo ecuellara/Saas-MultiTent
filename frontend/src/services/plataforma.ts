@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { ColoresMarca } from './branding'
 import { instalarRefresh } from './refresh-session'
 
 /**
@@ -72,6 +73,7 @@ export interface ClinicaAlta {
   nombre: string
   razonSocial?: string
   ciudad?: string
+  colores?: ColoresMarca
   planCodigo: string
   sedeNombre?: string
   ownerNombre: string
@@ -172,6 +174,16 @@ export async function obtenerClinica(id: string): Promise<DetalleClinica> {
 export async function crearClinica(payload: ClinicaAlta): Promise<ClinicaCreada> {
   const { data } = await plataforma.post<ClinicaCreada>('/platform/tenants', payload)
   return data
+}
+
+/**
+ * Logo del alta. Va por plataforma porque esa sesión no tiene tenant propio:
+ * el endpoint de configuración exige `X-Tenant-Id` validado.
+ */
+export async function subirLogoClinica(tenantId: string, archivo: File): Promise<void> {
+  const cuerpo = new FormData()
+  cuerpo.append('archivo', archivo)
+  await plataforma.post(`/platform/tenants/${tenantId}/logo`, cuerpo)
 }
 
 export async function actualizarClinica(

@@ -1,7 +1,23 @@
 import { defineStore } from 'pinia'
 import api from '../services/api'
+import {
+  LOGO_MARCA_STORAGE,
+  type ColoresMarca,
+  aplicarColoresTenant,
+  guardarCacheMarca,
+  guardarSlugMarca,
+  normalizarColores,
+  restablecerColores,
+  urlLogoPublico,
+} from '../services/branding'
 import { avisarCierreSesion } from '../services/canal-sesion'
 import { mensajeDeError } from '../services/errores'
+
+export interface BrandingTenant {
+  colores: ColoresMarca | null
+  tieneLogo: boolean
+  version: string
+}
 
 export interface Usuario {
   id: string
@@ -51,6 +67,8 @@ export const useSessionStore = defineStore('session', {
     usuario: null as Usuario | null,
     clinicas: [] as ClinicaResumen[],
     activa: null as SesionActiva | null,
+    /** Marca de la clínica activa (colores + si hay logo en storage). */
+    branding: null as BrandingTenant | null,
     cargando: false,
     error: '',
   }),
@@ -63,6 +81,13 @@ export const useSessionStore = defineStore('session', {
     rol: (s) => s.activa?.rol ?? '',
     /** `true` solo cuando la sesión está completamente resuelta. */
     lista: (s) => s.usuario !== null && s.activa !== null,
+    /** URL pública del logo del tenant activo, o `null` si no tiene. */
+    logoMarca(): string | null {
+      const slug = this.clinicaActiva?.slug
+      if (!this.branding?.tieneLogo || !slug) return null
+      return urlLogoPublico(slug, this.branding.version)
+    },
+    coloresMarca: (s): ColoresMarca | null => s.branding?.colores ?? null,
   },
 
   actions: {
@@ -123,12 +148,69 @@ export const useSessionStore = defineStore('session', {
       if (this.tenantId && !this.clinicas.some((c) => c.id === this.tenantId)) {
         this.quitarClinica()
       }
+
+      if (this.tenantId && this.activa) {
+        const activaTenant = this.clinicas.find((c) => c.id === this.tenantId)
+        if (activaTenant) guardarSlugMarca(activaTenant.slug)
+        await this.cargarBranding()
+      } else {
+        this.limpiarBranding()
+      }
+    },
+
+    /**
+     * Lee la marca del tenant activo. Es una petición secundaria: si falla, la
+     * sesión sigue funcionando con los colores por defecto.
+     */
+    async cargarBranding(): Promise<void> {
+      if (!this.tenantId) {
+        this.limpiarBranding()
+        return
+      }
+      try {
+        const { data } = await api.get<{
+          colores: unknown
+          logoUrl: string | null
+          updatedAt?: string
+        }>('/configuracion', { silencioso: true })
+        this.aplicarBrandingConfig(data)
+      } catch {
+        this.limpiarBranding()
+      }
+    },
+
+    /** Aplica la marca también tras guardar en Configuración (sin recargar). */
+    aplicarBrandingConfig(config: {
+      colores: unknown
+      logoUrl: string | null
+      updatedAt?: string
+    }): void {
+      const colores = normalizarColores(config.colores)
+      const tieneLogo = config.logoUrl === LOGO_MARCA_STORAGE
+      this.branding = {
+        colores,
+        tieneLogo,
+        version: config.updatedAt ?? '',
+      }
+      aplicarColoresTenant(colores)
+      const slug = this.clinicaActiva?.slug
+      if (slug) {
+        guardarSlugMarca(slug)
+        guardarCacheMarca({ slug, tieneLogo, version: config.updatedAt ?? '', colores })
+      }
+    },
+
+    limpiarBranding(): void {
+      this.branding = null
+      restablecerColores()
     },
 
     /** Cambia de clínica activa y vuelve a resolver permisos y features. */
     async elegirClinica(tenantId: string): Promise<void> {
       this.tenantId = tenantId
       localStorage.setItem(TENANT_KEY, tenantId)
+      const elegida = this.clinicas.find((c) => c.id === tenantId)
+      if (elegida) guardarSlugMarca(elegida.slug)
       await this.cargarSesion()
     },
 
@@ -136,6 +218,7 @@ export const useSessionStore = defineStore('session', {
     quitarClinica(): void {
       this.tenantId = ''
       this.activa = null
+      this.limpiarBranding()
       localStorage.removeItem(TENANT_KEY)
     },
 
@@ -164,7 +247,9 @@ export const useSessionStore = defineStore('session', {
       this.usuario = null
       this.clinicas = []
       this.activa = null
+      this.branding = null
       this.error = ''
+      restablecerColores()
       localStorage.removeItem(TOKEN_KEY)
       localStorage.removeItem(TENANT_KEY)
     },

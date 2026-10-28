@@ -1,9 +1,12 @@
-import { Body, Controller, Get, Headers, HttpCode, Ip, Param, Patch, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Ip, Param, Patch, Post, Put, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, Module, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { IsDateString, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Type } from 'class-transformer';
+import { IsDateString, IsEmail, IsIn, IsNotEmpty, IsObject, IsOptional, IsString, Matches, MinLength, ValidateNested } from 'class-validator';
 import type { Request, Response } from 'express';
+import { type ArchivoSubido, BrandingService, LOGO_MAX_BYTES } from '../../core/branding/branding.service.js';
 import { generarCodigoTotp, generarSecretoTotp, urlOtpauth, verificarTotp } from '../../core/auth/totp.js';
 import { Platform } from '../../core/auth/platform.decorator.js';
 import { Public } from '../../core/auth/public.decorator.js';
@@ -19,6 +22,7 @@ import { EntitlementsService } from '../../core/entitlements/entitlements.servic
 import { sembrarPlantillasConsentimiento } from '../../core/catalogo/consentimientos.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { LoginDto } from '../auth/login.dto.js';
+import { ColoresDto } from '../configuracion/configuracion.module.js';
 import { CATALOGO_PERMISOS } from '../../core/catalogo/permisos.js';
 import { CATALOGO_PLANTILLAS } from '../../core/catalogo/plantillas.js';
 import { CATALOGO_EJEMPLO_TRATAMIENTOS } from '../../core/catalogo/ejemplo.js';
@@ -144,6 +148,13 @@ export class CreateTenantDto {
   @IsString()
   ciudad?: string;
 
+  @ApiPropertyOptional({ type: ColoresDto })
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => ColoresDto)
+  colores?: ColoresDto;
+
   @ApiProperty({ example: 'clinica' })
   @IsString()
   @IsNotEmpty()
@@ -202,6 +213,7 @@ export class PlatformService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly entitlements: EntitlementsService,
+    private readonly branding: BrandingService,
   ) {}
 
   private get db(): Record<string, { findUnique: (a: unknown) => Promise<Record<string, unknown> | null> } & Record<string, (a: unknown) => Promise<unknown>>> {
@@ -635,6 +647,9 @@ export class PlatformService {
             tenantId: tenant.id,
             nombre: dto.nombre,
             ...(dto.ciudad ? { ciudad: dto.ciudad } : {}),
+            ...(dto.colores
+              ? { colores: { primario: dto.colores.primario, acento: dto.colores.acento } }
+              : {}),
           },
         });
         const sede = await t.sede.create({
@@ -700,6 +715,16 @@ export class PlatformService {
       }
       throw e;
     }
+  }
+
+  /**
+   * Logo del alta: el panel de plataforma no tiene sesión de clínica, así que
+   * no puede usar `POST /configuracion/logo`. Se valida igual (firma real,
+   * 2 MB) y se escribe bajo el mismo prefijo del tenant.
+   */
+  async subirLogo(tenantId: string, archivo: ArchivoSubido | undefined): Promise<{ ok: true }> {
+    await this.branding.subirLogo(tenantId, archivo);
+    return { ok: true as const };
   }
 
   async planes(): Promise<unknown> {
@@ -978,6 +1003,22 @@ export class PlatformController {
   @HttpCode(201)
   cargarCatalogoEjemplo(@Param('id') id: string): Promise<unknown> {
     return this.service.cargarCatalogoEjemplo(id);
+  }
+
+  /** Solo `owner`: logo del alta (la sesión de plataforma no tiene tenant). */
+  @PlatformRoles('owner')
+  @Post('tenants/:id/logo')
+  @HttpCode(200)
+  @UseInterceptors(
+    FileInterceptor('archivo', {
+      limits: { fileSize: LOGO_MAX_BYTES, files: 1 },
+    }),
+  )
+  subirLogo(
+    @Param('id') id: string,
+    @UploadedFile() archivo: ArchivoSubido | undefined,
+  ): Promise<{ ok: true }> {
+    return this.service.subirLogo(id, archivo);
   }
 
   @Get('tenants/:id/metricas')

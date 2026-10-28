@@ -33,6 +33,7 @@ const confirmarAccion = ref<'SUSPENDED' | 'ACTIVE' | null>(null)
 const confirmarCatalogo = ref(false)
 const resultadoCatalogo = ref('')
 const exportando = ref(false)
+const avisoLogo = ref(route.query.avisoLogo === '1')
 
 async function cargar(): Promise<void> {
   cargando.value = true
@@ -197,6 +198,10 @@ onMounted(cargar)
       </div>
 
       <p v-if="resultadoCatalogo" class="text-sm text-muted">{{ resultadoCatalogo }}</p>
+
+      <p v-if="avisoLogo" class="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+        La clínica se creó, pero el logo no se pudo subir. Añádelo desde Configuración de la clínica.
+      </p>
 
       <AvisoError v-if="error" :mensaje="error" />
     </div>

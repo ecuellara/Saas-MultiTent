@@ -29,6 +29,16 @@ export interface CobroResumen {
   periodoInicio: string
   periodoFin: string
   proveedor: string | null
+  /** Desglose del importe a cobrar (precio del plan + comisión de la pasarela). */
+  comision?: string
+  total?: string
+}
+
+export interface DesgloseImporte {
+  precio: string
+  comision: string
+  total: string
+  moneda: string
 }
 
 export interface MiPlan {
@@ -43,8 +53,8 @@ export async function obtenerMiPlan(): Promise<MiPlan> {
   return data
 }
 
-export async function prepararPlanFormToken(): Promise<{ formToken: string; publicKey: string; cobroId: string }> {
-  const { data } = await api.post<{ formToken: string; publicKey: string; cobroId: string }>('/facturacion/mi-plan/formtoken')
+export async function prepararPlanFormToken(): Promise<{ formToken: string; publicKey: string; cobroId: string; importe: DesgloseImporte }> {
+  const { data } = await api.post<{ formToken: string; publicKey: string; cobroId: string; importe: DesgloseImporte }>('/facturacion/mi-plan/formtoken')
   return data
 }
 

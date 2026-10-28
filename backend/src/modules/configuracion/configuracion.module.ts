@@ -1,6 +1,16 @@
-import { Body, Controller, Get, Patch } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Patch,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { Injectable, Module, NotFoundException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   IsArray,
   IsEmail,
@@ -15,11 +25,17 @@ import {
   ValidatorConstraintInterface,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import {
+  type ArchivoSubido,
+  BrandingService,
+  LOGO_MAX_BYTES,
+} from '../../core/branding/branding.service.js';
 import { RequirePermission } from '../../core/guards/require-permission.decorator.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
 
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 function aMinutos(hora: string): number {
   const [h, m] = hora.split(':').map(Number);
@@ -186,6 +202,22 @@ export class DescansoDto {
   motivo?: string;
 }
 
+/**
+ * Colores de marca de la clínica. Se exigen ambos porque la interfaz siempre
+ * envía el par completo; el valor debe ser un hex CSS `#RRGGBB`.
+ */
+export class ColoresDto {
+  @ApiProperty({ example: '#0756a3' })
+  @IsString()
+  @Matches(HEX_COLOR, { message: 'colores.primario debe ser un color hex #RRGGBB' })
+  primario!: string;
+
+  @ApiProperty({ example: '#12b8ce' })
+  @IsString()
+  @Matches(HEX_COLOR, { message: 'colores.acento debe ser un color hex #RRGGBB' })
+  acento!: string;
+}
+
 export class UpdateConfigDto {
   @ApiPropertyOptional()
   @IsOptional()
@@ -222,10 +254,12 @@ export class UpdateConfigDto {
   @IsString()
   logoUrl?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: ColoresDto })
   @IsOptional()
   @IsObject()
-  colores?: Record<string, unknown>;
+  @ValidateNested()
+  @Type(() => ColoresDto)
+  colores?: ColoresDto;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -261,7 +295,10 @@ const SELECT_CONFIG = {
 
 @Injectable()
 export class ConfiguracionService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly branding: BrandingService,
+  ) {}
 
   private get db(): {
     tenantConfig: {
@@ -311,11 +348,15 @@ export class ConfiguracionService {
       'email',
       'ciudad',
       'logoUrl',
-      'colores',
       'horario',
       'descansos',
     ] as const) {
       if (dto[k] !== undefined) data[k] = dto[k];
+    }
+    if (dto.colores !== undefined) {
+      data.colores = dto.colores
+        ? { primario: dto.colores.primario, acento: dto.colores.acento }
+        : null;
     }
     return this.db.tenantConfig.upsert({
       where: { tenantId: ctx.tenantId },
@@ -323,6 +364,20 @@ export class ConfiguracionService {
       create: { tenantId: ctx.tenantId, ...data },
       select: { ...SELECT_CONFIG },
     } as unknown as Parameters<ConfiguracionService['db']['tenantConfig']['update']>[0]);
+  }
+
+  /** Sube/reemplaza el logo del tenant autenticado y devuelve la configuración. */
+  async subirLogo(archivo: ArchivoSubido | undefined): Promise<ConfigRow> {
+    const ctx = requireTenant();
+    await this.branding.subirLogo(ctx.tenantId, archivo);
+    return this.obtener();
+  }
+
+  /** Elimina el logo del tenant autenticado y devuelve la configuración. */
+  async quitarLogo(): Promise<ConfigRow> {
+    const ctx = requireTenant();
+    await this.branding.quitarLogo(ctx.tenantId);
+    return this.obtener();
   }
 }
 
@@ -340,6 +395,27 @@ export class ConfiguracionController {
   @RequirePermission('sedes.manage')
   actualizar(@Body() dto: UpdateConfigDto): Promise<unknown> {
     return this.service.actualizar(dto);
+  }
+
+  /**
+   * Logo de la clínica. `archivo` es obligatorio; el tipo real se decide por
+   * magic bytes (`firmarMime`), no por el nombre ni el MIME declarado.
+   */
+  @Post('logo')
+  @RequirePermission('sedes.manage')
+  @UseInterceptors(
+    FileInterceptor('archivo', {
+      limits: { fileSize: LOGO_MAX_BYTES, files: 1 },
+    }),
+  )
+  subirLogo(@UploadedFile() archivo: ArchivoSubido | undefined): Promise<unknown> {
+    return this.service.subirLogo(archivo);
+  }
+
+  @Delete('logo')
+  @RequirePermission('sedes.manage')
+  quitarLogo(): Promise<unknown> {
+    return this.service.quitarLogo();
   }
 }
 

@@ -1417,12 +1417,16 @@ Nivel 10 Operación         Secrets, backups, monitoreo, CI/CD
 /tenants/{tenantId}/patients/{patientId}/documents/{file}
 /tenants/{tenantId}/patients/{patientId}/xrays/{file}
 /tenants/{tenantId}/consents/{consentId}/{file}
-/tenants/{tenantId}/config/logo.png
+/tenants/{tenantId}/branding/logo.png
 /tenants/{tenantId}/exports/{exportId}.zip
 ```
 
 - Buckets **privados**; en producción, URLs **firmadas de 5–15 min**. Con el
   proveedor local la descarga pasa por la API (ver endpoints abajo).
+- **Logo de marca**: el bucket sigue privado y se sirve por
+  `GET /api/publico/logo/:slug` (ruta `@Public`, imagen leída en el servidor,
+  caché de 60 s). En `TenantConfig.logoUrl` solo se guarda el marcador
+  `__storage__`; la clave `branding/logo.<png|jpg>` la construye el servidor.
 - El backend valida `tenantId` antes de escribir o leer cualquier clave, y la
   contención de rutas (`path.resolve` + `startsWith(base + sep)`) cierra el
   path traversal.

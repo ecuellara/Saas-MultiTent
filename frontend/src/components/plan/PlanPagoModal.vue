@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { prepararPlanFormToken, validarRetornoPlan } from '../../services/facturacion'
+import { prepararPlanFormToken, validarRetornoPlan, type DesgloseImporte } from '../../services/facturacion'
 import { montarSmartForm, type FormularioIzipay } from '../../services/izipay-form'
+import { formatoMoneda } from '../../services/pagos'
 import { mensajeDeError } from '../../services/errores'
 import AvisoError from '../ui/AvisoError.vue'
 import ModalBase from '../ui/ModalBase.vue'
@@ -11,6 +12,7 @@ import ModalBase from '../ui/ModalBase.vue'
 const emit = defineEmits<{ cerrar: [mensaje: string]; revisar: []; exito: [cobroId: string] }>()
 const error = ref('')
 const mensaje = ref('Preparando formulario seguro…')
+const desglose = ref<DesgloseImporte | null>(null)
 let activo = true
 let resultadoRecibido = false
 let formulario: FormularioIzipay | undefined
@@ -27,6 +29,7 @@ onMounted(async () => {
   try {
     const preparado = await prepararPlanFormToken()
     cobroId = preparado.cobroId
+    desglose.value = preparado.importe
     if (!activo) return
     formulario = montarSmartForm({
       formToken: preparado.formToken, publicKey: preparado.publicKey,
@@ -75,6 +78,24 @@ onBeforeUnmount(() => {
 <template>
   <ModalBase titulo="Pagar el plan" @cerrar="cerrar">
     <AvisoError v-if="error" :mensaje="error" class="mb-3" />
+    <div v-if="desglose" class="mb-3 rounded-lg border border-line bg-background p-3 text-sm">
+      <p class="text-xs font-medium uppercase text-muted">Importe a pagar</p>
+      <dl class="mt-2 space-y-1">
+        <div class="flex justify-between gap-2">
+          <dt class="text-muted">Precio del plan</dt>
+          <dd class="text-ink">{{ formatoMoneda(desglose.precio) }}</dd>
+        </div>
+        <div class="flex justify-between gap-2">
+          <dt class="text-muted">Comisión de la pasarela</dt>
+          <dd class="text-ink">{{ formatoMoneda(desglose.comision) }}</dd>
+        </div>
+        <div class="flex justify-between gap-2 border-t border-line pt-1 font-semibold">
+          <dt class="text-ink">Total</dt>
+          <dd class="text-ink">{{ formatoMoneda(desglose.total) }}</dd>
+        </div>
+      </dl>
+      <p class="mt-2 text-xs text-muted">El importe incluye la comisión de la pasarela de pago, que asume la clínica.</p>
+    </div>
     <p class="mb-3 text-sm text-muted" role="status">{{ mensaje }}</p>
     <div id="micuentawebstd_rest_wrapper">
       <div id="izipay-container"><div class="kr-smart-form" kr-card-form-expanded></div></div>

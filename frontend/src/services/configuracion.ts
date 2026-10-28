@@ -1,4 +1,5 @@
 import api from './api'
+import type { ColoresMarca } from './branding'
 
 /**
  * Capa de dominio de la configuración de la clínica.
@@ -47,7 +48,8 @@ export interface Configuracion {
   horario: Horario | null
   descansos: Descanso[] | null
   logoUrl: string | null
-  colores: unknown
+  colores: ColoresMarca | null
+  updatedAt?: string
 }
 
 export interface ConfiguracionEntrada {
@@ -58,6 +60,7 @@ export interface ConfiguracionEntrada {
   email?: string
   ciudad?: string
   logoUrl?: string
+  colores?: ColoresMarca | null
   horario?: Horario | null
   descansos?: Descanso[]
 }
@@ -69,6 +72,19 @@ export async function obtenerConfiguracion(): Promise<Configuracion> {
 
 export async function actualizarConfiguracion(dto: ConfiguracionEntrada): Promise<Configuracion> {
   const { data } = await api.patch<Configuracion>('/configuracion', dto)
+  return data
+}
+
+/** Sube (o reemplaza) el logo. El backend decide el tipo por magic bytes. */
+export async function subirLogo(archivo: File): Promise<Configuracion> {
+  const cuerpo = new FormData()
+  cuerpo.append('archivo', archivo)
+  const { data } = await api.post<Configuracion>('/configuracion/logo', cuerpo)
+  return data
+}
+
+export async function quitarLogo(): Promise<Configuracion> {
+  const { data } = await api.delete<Configuracion>('/configuracion/logo')
   return data
 }
 

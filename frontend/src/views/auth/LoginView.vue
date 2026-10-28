@@ -3,8 +3,12 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowRightIcon, BuildingOffice2Icon, CalendarDaysIcon, ClipboardDocumentListIcon } from '@heroicons/vue/24/outline'
 import ThemeToggle from '../../components/ui/ThemeToggle.vue'
+import { aplicarColoresTenant, leerCacheMarca, urlLogoPublico } from '../../services/branding'
 import { useSessionStore } from '../../stores/session'
 const sesion = useSessionStore(); const router = useRouter(); const route = useRoute()
+const marcaLogin = leerCacheMarca()
+const logoLogin = marcaLogin?.tieneLogo ? urlLogoPublico(marcaLogin.slug, marcaLogin.version) : ''
+aplicarColoresTenant(marcaLogin?.colores)
 const email = ref(''); const password = ref(''); const focusEmail = ref(false); const focusPassword = ref(false)
 const expirada = computed(() => route.query.expirada === '1')
 async function entrar(): Promise<void> { if (await sesion.iniciarSesion(email.value.trim(), password.value)) await router.replace(typeof route.query.destino === 'string' ? route.query.destino : '/') }
@@ -20,7 +24,7 @@ async function entrar(): Promise<void> { if (await sesion.iniciarSesion(email.va
           <div class="absolute inset-0 bg-[linear-gradient(160deg,rgba(7,86,163,.94),rgba(18,184,206,.8))]" />
           <div class="relative z-10">
             <div class="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[.22em]">Gestión clínica</div>
-            <div class="mt-7 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15"><img src="/favicon.svg" class="h-10 w-10" alt="" /></div>
+            <div class="mt-7 flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white/15"><img v-if="logoLogin" :src="logoLogin" class="h-full w-full object-contain" alt="Logo de la clínica" /><img v-else src="/favicon.svg" class="h-10 w-10" alt="" /></div>
             <h2 class="mt-5 text-3xl font-semibold tracking-tight">Una plataforma para tus clínicas</h2>
             <p class="mt-3 max-w-md text-sm leading-6 text-white/80">Agenda, pacientes, operación clínica y cobros en un panel seguro, claro y multi-clínica.</p>
           </div>

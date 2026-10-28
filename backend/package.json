@@ -30,6 +30,7 @@
     "db:prueba-respaldo-remoto": "node scripts/prueba-respaldo-remoto.mjs",
     "vigilancia": "node scripts/vigilancia.mjs",
     "smoke:arranque": "npm run build && node scripts/smoke-arranque.mjs",
+    "test:unit": "vitest run --config vitest.config.unit.ts",
     "test:aislamiento": "vitest run --config vitest.config.e2e.ts --fileParallelism=false"
   },
   "dependencies": {

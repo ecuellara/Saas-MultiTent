@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { aCentimos, configuracion, verificarFirma } from '../../core/pasarela/pasarela.js';
+import { comisionIzipay, totalConComision } from '../../core/pasarela/comision.js';
+import { aCentimos, configuracion, desdeCentimos, verificarFirma } from '../../core/pasarela/pasarela.js';
 import { PasarelaService } from '../../core/pasarela/pasarela.service.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireTenant } from '../../core/tenant-context/tenant-context.js';
@@ -16,6 +17,16 @@ type CobroPlano = Record<string, unknown> & {
   periodoInicio: Date;
   periodoFin: Date;
 };
+
+/** Desglose en texto decimal (S/ 83.20): el cliente NUNCA decide importes. */
+function desglose(importeCentimos: number): { precio: string; comision: string; total: string } {
+  const { comision, total } = comisionIzipay(importeCentimos);
+  return {
+    precio: desdeCentimos(importeCentimos).toFixed(2),
+    comision: desdeCentimos(comision).toFixed(2),
+    total: desdeCentimos(total).toFixed(2),
+  };
+}
 
 /**
  * Izipay para el PLAN de la clínica (suscripción SaaS). Nunca toca `Pago`:
@@ -54,6 +65,12 @@ export class IzipaySuscripcionesService {
       id: c.id, monto: String(c.monto), moneda: c.moneda, estado: c.estado,
       periodoInicio: c.periodoInicio, periodoFin: c.periodoFin, proveedor: (c as { proveedor?: string }).proveedor ?? null,
     });
+    // El cobro pendiente se muestra con desglose: el monto registrado es el
+    // PRECIO del plan; lo que se cobra incluye la comisión de la pasarela.
+    const pendienteConDesglose =
+      pendiente === null
+        ? null
+        : { ...plano(pendiente), ...desglose(aCentimos(String(pendiente.monto))) };
     return {
       plan: {
         codigo: (sub.plan as { codigo: string }).codigo,
@@ -62,7 +79,7 @@ export class IzipaySuscripcionesService {
         moneda: (sub.plan as { moneda?: string }).moneda ?? 'PEN',
       },
       subscription: { estado: sub.estado, periodoInicio: sub.periodoInicio, periodoFin: sub.periodoFin },
-      cobroPendiente: pendiente ? plano(pendiente) : null,
+      cobroPendiente: pendienteConDesglose,
       cobros: cobros.map(plano),
     };
   }
@@ -72,7 +89,7 @@ export class IzipaySuscripcionesService {
    * más antiguo primero); si no hay ninguno, genera el del periodo con el
    * checkout idempotente. El importe sale SIEMPRE del servidor.
    */
-  async formtokenPlan(): Promise<{ formToken: string; publicKey: string; cobroId: string }> {
+  async formtokenPlan(): Promise<{ formToken: string; publicKey: string; cobroId: string; importe: { precio: string; comision: string; total: string; moneda: string } }> {
     const ctx = requireTenant();
     // Sin credenciales se falla ANTES de crear intento o cobro.
     configuracion();
@@ -92,7 +109,11 @@ export class IzipaySuscripcionesService {
     const cobro = pendientes[0] ??
       (await this.billing.checkout({ tenantId: ctx.tenantId, planCodigo: sub.plan.codigo, proveedor: 'izipay' }) as unknown as CobroPlano);
     if (cobro.estado !== 'pendiente') throw new BadRequestException('El cobro ya fue procesado');
-    const amount = aCentimos(String(cobro.monto));
+    // El cobro registra el PRECIO del plan; lo que se cobra en Izipay es el
+    // precio MÁS la comisión de la pasarela (docs/planes_saas_dental_2026.md
+    // §1.1), para que la clínica reciba el precio íntegro.
+    const precio = aCentimos(String(cobro.monto));
+    const amount = totalConComision(precio);
     const orderId = randomUUID();
     const metadata = { cobroSuscripcionId: cobro.id, tenantId: ctx.tenantId, usuarioId: ctx.userId };
     const config = await db.tenantConfig.findUnique({ where: { tenantId: ctx.tenantId } });
@@ -112,7 +133,7 @@ export class IzipaySuscripcionesService {
         ...(config.telefono ? { telefono: config.telefono } : {}),
       } } : {}),
     });
-    return { formToken, publicKey, cobroId: cobro.id };
+    return { formToken, publicKey, cobroId: cobro.id, importe: { ...desglose(precio), moneda: cobro.moneda } };
   }
 
   /** Solo valida el resultado visual. JAMÁS marca nada como pagado. */

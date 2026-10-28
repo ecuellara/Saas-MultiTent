@@ -40,7 +40,7 @@ async function salir(): Promise<void> { await sesion.cerrarSesion(); await route
   <aside class="flex h-screen w-64 shrink-0 flex-col overflow-hidden border-r border-line bg-background/95 shadow-[12px_0_40px_-28px_rgba(7,86,163,.65)] backdrop-blur-xl">
     <!-- Marca / clínica activa -->
     <div class="shrink-0 border-b border-line px-4 py-5">
-      <div class="mb-4 flex items-center gap-3"><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary"><img src="/favicon.svg" class="h-7 w-7" alt="" /></div><div class="min-w-0"><p class="text-xs font-semibold uppercase tracking-[.18em] text-muted">Dental SaaS</p><p class="truncate text-sm font-semibold text-ink">Gestión clínica</p></div><button class="ml-auto rounded-lg p-1.5 text-muted hover:bg-background-soft md:hidden" @click="emit('cerrar')"><XMarkIcon class="h-5 w-5" /></button></div>
+      <div class="mb-4 flex items-center gap-3"><div class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-primary"><img v-if="sesion.logoMarca" :src="sesion.logoMarca" class="h-full w-full object-contain" alt="Logo de la clínica" /><img v-else src="/favicon.svg" class="h-7 w-7" alt="" /></div><div class="min-w-0"><p class="text-xs font-semibold uppercase tracking-[.18em] text-muted">Dental SaaS</p><p class="truncate text-sm font-semibold text-ink">Gestión clínica</p></div><button class="ml-auto rounded-lg p-1.5 text-muted hover:bg-background-soft md:hidden" @click="emit('cerrar')"><XMarkIcon class="h-5 w-5" /></button></div>
       <p class="truncate text-sm font-semibold text-ink" :title="sesion.clinicaActiva?.nombre">
         {{ sesion.clinicaActiva?.nombre ?? 'Clínica' }}
       </p>

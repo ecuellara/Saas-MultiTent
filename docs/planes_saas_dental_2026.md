@@ -15,6 +15,32 @@
 
 El pago anual equivale a pagar **10 meses y utilizar 12**. El importe anual se cobra por adelantado; no es un cobro mensual fraccionado.
 
+## 1.1 Comisión de la pasarela (la asume la clínica)
+
+Izipay cobra **3,44 % del valor de la operación más 18 % de IGV** sobre esa comisión
+(**4,0592 %** efectivo), y además **S/ 0,69 más IGV** por canal virtual (**S/ 0,8142**
+por operación).
+
+Para que la clínica reciba el precio del plan **íntegro**, el importe que se cobra es:
+
+```text
+total = (precio + 0,8142) / (1 − 0,040592)   →  redondeado HACIA ARRIBA al céntimo
+```
+
+| Plan | Precio del plan | Comisión pasarela | **Total a pagar** |
+|---|---:|---:|---:|
+| Consultorio | S/ 79,00 | S/ 4,20 | **S/ 83,20** |
+| Profesional | S/ 149,00 | S/ 7,16 | **S/ 156,16** |
+| Clínica | S/ 249,00 | S/ 11,39 | **S/ 260,39** |
+
+El redondeo hacia arriba garantiza que la clínica nunca reciba menos que el precio del
+plan. El año anual se calcula con la misma fórmula sobre el importe anual.
+
+**Cómo se comunica:** en la pantalla de pago se muestra el desglose (precio del plan +
+comisión = total) y una nota: «*El importe incluye la comisión de la pasarela de pago,
+que asume la clínica*». Al continuar, el usuario acepta las condiciones del servicio.
+El cobro registrado en el sistema sigue siendo el **precio del plan**; la comisión es un
+coste de la operación y no un ingreso.
 ## 2. Capacidad por plan
 
 | Límite | Consultorio | Profesional | Clínica |
@@ -50,7 +76,7 @@ Los límites de usuarios incluyen las cuentas de odontólogos y personal adminis
 | Proveedores y compras | Básico | Completo | Completo por sede |
 | Roles y permisos | Básicos | Avanzados | Avanzados por sede |
 | Auditoría de cambios | No | Sí | Sí |
-| Personalización de marca | No | Básica | Avanzada |
+| Personalización de marca (logo y 2 colores) | Sí | Sí | Sí |
 | Administración de múltiples sedes | No | No | Sí |
 
 Las funciones clínicas esenciales no se bloquean por plan; las diferencias se concentran en capacidad y herramientas administrativas.
